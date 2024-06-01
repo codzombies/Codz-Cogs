@@ -1,0 +1,18 @@
+{
+    "author": [
+        "blizzardthewolf"
+    ],
+    "install_msg": "Thank you for installing my cog, if you run into any issues or have any questions, you can find me in the Red servers or DM me @blizzthewolf. You are also free to open an issue on [my repository](https://git.purplepanda.cc/blizz/blizz-cogs)",
+    "name": "BannedCount",
+    "disabled": false,
+    "short": "Get the number of banned members in the server",
+    "description": "Get the number of banned members in the server",
+    "tags": [
+        "amount",
+        "bans",
+        "count",
+        "bancount"
+    ],
+    "min_bot_version": "3.5.0",
+    "hidden": false
+}
