@@ -100,7 +100,7 @@ class Backup(commands.Cog):
         except (json.JSONDecodeError, IndexError):
             try:
                 export = json.loads(await ctx.message.reference.resolved.attachments[0].read())
-            except (json.JSONDecodeError, IndexError):
+            except (json.JSONDecodeError, IndexError, AttributeError):
                 await ctx.send(error("Please provide a valid JSON export file."))
                 return
 
