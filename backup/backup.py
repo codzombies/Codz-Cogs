@@ -14,15 +14,16 @@ from redbot.cogs.downloader import errors
 from redbot.cogs.downloader.converters import InstalledCog
 from redbot.core import commands
 from redbot.core.bot import Red
-from redbot.core.utils.chat_formatting import error, humanize_list, text_to_file
+from redbot.core.utils.chat_formatting import bold, error, humanize_list, text_to_file
 
 
 # pylint: disable=protected-access
 class Backup(commands.Cog):
     """A utility to make reinstalling repositories and cogs after migrating the bot far easier."""
 
-    __author__ = ["SeaswimmerTheFsh"]
-    __version__ = "1.1.0"
+    __author__ = ["[cswimr](https://www.coastalcommits.com/cswimr)"]
+    __git__ = "https://www.coastalcommits.com/cswimr/SeaCogs"
+    __version__ = "1.1.1"
     __documentation__ = "https://seacogs.coastalcommits.com/backup/"
 
     def __init__(self, bot: Red):
@@ -35,19 +36,19 @@ class Backup(commands.Cog):
         n = "\n" if "\n\n" not in pre_processed else ""
         text = [
             f"{pre_processed}{n}",
-            f"Cog Version: **{self.__version__}**",
-            f"Author: {humanize_list(self.__author__)}",
-            f"Documentation: {self.__documentation__}",
+            f"{bold('Cog Version:')} [{self.__version__}]({self.__git__})",
+            f"{bold('Author:')} {humanize_list(self.__author__)}",
+            f"{bold('Documentation:')} {self.__documentation__}",
         ]
         return "\n".join(text)
 
     @commands.group(autohelp=True)
-    @commands.has_permissions(administrator=True)
+    @commands.is_owner()
     async def backup(self, ctx: commands.Context):
         """Backup your installed cogs."""
 
     @backup.command(name="export")
-    @commands.has_permissions(administrator=True)
+    @commands.is_owner()
     async def backup_export(self, ctx: commands.Context):
         """Export your installed repositories and cogs to a file."""
         downloader = ctx.bot.get_cog("Downloader")
@@ -92,7 +93,7 @@ class Backup(commands.Cog):
         )
 
     @backup.command(name="import")
-    @commands.has_permissions(administrator=True)
+    @commands.is_owner()
     async def backup_import(self, ctx: commands.Context):
         """Import your installed repositories and cogs from an export file."""
         try:
@@ -196,7 +197,7 @@ class Backup(commands.Cog):
                 cog_modules = []
                 for cog in cogs:
                     # If you're forking this cog, make sure to change these strings!
-                    if cog["name"] == "backup" and "SeaswimmerTheFsh/SeaCogs" in url:
+                    if cog["name"] == "backup" and "cswimr/SeaCogs" in url:
                         continue
                     try:
                         cog_module = await InstalledCog.convert(ctx, cog["name"])
@@ -232,7 +233,7 @@ class Backup(commands.Cog):
                         commit = None
 
                     # If you're forking this cog, make sure to change these strings!
-                    if cog_name == "backup" and "SeaswimmerTheFsh/SeaCogs" in url:
+                    if cog_name == "backup" and "cswimr/SeaCogs" in url:
                         continue
 
                     async with repository.checkout(
