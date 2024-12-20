@@ -43,12 +43,12 @@ class Backup(commands.Cog):
         return "\n".join(text)
 
     @commands.group(autohelp=True)
-    @commands.is_owner()
+    @commands.has_permissions(administrator=True)
     async def backup(self, ctx: commands.Context):
         """Backup your installed cogs."""
 
     @backup.command(name="export")
-    @commands.is_owner()
+    @commands.has_permissions(administrator=True)
     async def backup_export(self, ctx: commands.Context):
         """Export your installed repositories and cogs to a file."""
         downloader = ctx.bot.get_cog("Downloader")
@@ -93,7 +93,7 @@ class Backup(commands.Cog):
         )
 
     @backup.command(name="import")
-    @commands.is_owner()
+    @commands.has_permissions(administrator=True)
     async def backup_import(self, ctx: commands.Context):
         """Import your installed repositories and cogs from an export file."""
         try:
