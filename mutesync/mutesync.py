@@ -45,7 +45,7 @@ class MuteSync(commands.Cog):
     async def MuteSync(self, ctx: commands.Context) -> None:
         """Configure MuteSync for this server."""
 
-    @MuteSync.command(aliases=["add", "enable"])
+    @MuteSync.command(aliases=["add", "pull"])
     async def enable(
         self, ctx: commands.Context, *, server: discord.Guild | str
     ) -> None:
