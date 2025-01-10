@@ -82,7 +82,7 @@ class MuteSync(commands.Cog):
         await self.config.guild(ctx.guild).timeout_sources.set(timeout_sources)
         await ctx.send(success(f'Now pulling timeouts from "{server.name}".'))
 
-    @MuteSync.command(aliases=["remove", "del", "disable"])
+    @MuteSync.command(aliases=["remove", "del", "delete"])
     async def disable(
         self, ctx: commands.Context, *, server: discord.Guild | str
     ) -> None:
