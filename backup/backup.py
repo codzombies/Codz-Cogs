@@ -17,13 +17,16 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import bold, error, humanize_list, text_to_file
 
 
+# Disable Ruff & Pylint complaining about accessing private members
+# That's kind of necessary for this cog to function because the Downloader cog has a limited public API
+# ruff: noqa: SLF001 # Private member access
 # pylint: disable=protected-access
 class Backup(commands.Cog):
     """A utility to make reinstalling repositories and cogs after migrating the bot far easier."""
 
     __author__ = ["[cswimr](https://www.coastalcommits.com/cswimr)"]
     __git__ = "https://www.coastalcommits.com/cswimr/SeaCogs"
-    __version__ = "1.1.1"
+    __version__ = "1.1.4"
     __documentation__ = "https://seacogs.coastalcommits.com/backup/"
 
     def __init__(self, bot: Red):
@@ -42,22 +45,18 @@ class Backup(commands.Cog):
         ]
         return "\n".join(text)
 
-    @commands.group(autohelp=True)
+    @commands.group(autohelp=True)  # type: ignore
     @commands.has_permissions(administrator=True)
-    async def backup(self, ctx: commands.Context):
+    async def backup(self, ctx: commands.Context) -> None:
         """Backup your installed cogs."""
 
     @backup.command(name="export")
     @commands.has_permissions(administrator=True)
-    async def backup_export(self, ctx: commands.Context):
+    async def backup_export(self, ctx: commands.Context) -> None:
         """Export your installed repositories and cogs to a file."""
         downloader = ctx.bot.get_cog("Downloader")
         if downloader is None:
-            await ctx.send(
-                error(
-                    f"You do not have the `Downloader` cog loaded. Please run `{ctx.prefix}load downloader` and try again."
-                )
-            )
+            await ctx.send(error(f"You do not have the `Downloader` cog loaded. Please run `{ctx.prefix}load downloader` and try again."))
             return
 
         all_repos = list(downloader._repo_manager.repos)
@@ -78,7 +77,7 @@ class Backup(commands.Cog):
                 if cog.repo_name == repo.name:
                     cog_dict = {
                         "name": cog.name,
-                        # "loaded": cog.name in ctx.bot.extensions.keys(),
+                        # "loaded": cog.name in ctx.bot.extensions.keys(),  # noqa: ERA001
                         # this functionality was planned but never implemented due to Red limitations
                         # and the possibility of restoration functionality being added to Core
                         "pinned": cog.pinned,
@@ -88,30 +87,24 @@ class Backup(commands.Cog):
 
             export_data.append(repo_dict)
 
-        await ctx.send(
-            file=text_to_file(json.dumps(export_data, indent=4), "backup.json")
-        )
+        await ctx.send(file=text_to_file(json.dumps(export_data, indent=4), "backup.json"))
 
     @backup.command(name="import")
     @commands.has_permissions(administrator=True)
-    async def backup_import(self, ctx: commands.Context):
+    async def backup_import(self, ctx: commands.Context) -> None:
         """Import your installed repositories and cogs from an export file."""
         try:
             export = json.loads(await ctx.message.attachments[0].read())
         except (json.JSONDecodeError, IndexError):
             try:
-                export = json.loads(await ctx.message.reference.resolved.attachments[0].read())
+                export = json.loads(await ctx.message.reference.resolved.attachments[0].read())  # type: ignore - this is fine to let error because it gets handled
             except (json.JSONDecodeError, IndexError, AttributeError):
                 await ctx.send(error("Please provide a valid JSON export file."))
                 return
 
         downloader = ctx.bot.get_cog("Downloader")
         if downloader is None:
-            await ctx.send(
-                error(
-                    f"You do not have the `Downloader` cog loaded. Please run `{ctx.prefix}load downloader` and try again."
-                )
-            )
+            await ctx.send(error(f"You do not have the `Downloader` cog loaded. Please run `{ctx.prefix}load downloader` and try again."))
             return
 
         repo_s = []
@@ -133,32 +126,20 @@ class Backup(commands.Cog):
                     repo_e.append("PyLav cogs are not supported.")
                     continue
                 if name.startswith(".") or name.endswith("."):
-                    repo_e.append(
-                        f"Invalid repository name: {name}\nRepository names cannot start or end with a dot."
-                    )
+                    repo_e.append(f"Invalid repository name: {name}\nRepository names cannot start or end with a dot.")
                     continue
                 if re.match(r"^[a-zA-Z0-9_\-\.]+$", name) is None:
-                    repo_e.append(
-                        f"Invalid repository name: {name}\nRepository names may only contain letters, numbers, underscores, hyphens, and dots."
-                    )
+                    repo_e.append(f"Invalid repository name: {name}\nRepository names may only contain letters, numbers, underscores, hyphens, and dots.")
                     continue
 
                 try:
-                    repository = await downloader._repo_manager.add_repo(
-                        url, name, branch
-                    )
-                    repo_s.append(
-                        f"Added repository {name} from {url} on branch {branch}."
-                    )
-                    self.logger.debug(
-                        "Added repository %s from %s on branch %s", name, url, branch
-                    )
+                    repository = await downloader._repo_manager.add_repo(url, name, branch)
+                    repo_s.append(f"Added repository {name} from {url} on branch {branch}.")
+                    self.logger.debug("Added repository %s from %s on branch %s", name, url, branch)
 
                 except errors.ExistingGitRepo:
                     repo_e.append(f"Repository {name} already exists.")
-                    repository = downloader._repo_manager.get_repo(
-                        name
-                    )
+                    repository = downloader._repo_manager.get_repo(name)
                     self.logger.debug("Repository %s already exists", name)
 
                 except errors.AuthenticationError as err:
@@ -172,9 +153,7 @@ class Backup(commands.Cog):
                     continue
 
                 except errors.CloningError as err:
-                    repo_e.append(
-                        f"Cloning error while adding repository {name}. See logs for more information."
-                    )
+                    repo_e.append(f"Cloning error while adding repository {name}. See logs for more information.")
                     self.logger.exception(
                         "Something went wrong whilst cloning %s (to revision %s)",
                         url,
@@ -184,9 +163,7 @@ class Backup(commands.Cog):
                     continue
 
                 except OSError:
-                    repo_e.append(
-                        f"OS error while adding repository {name}. See logs for more information."
-                    )
+                    repo_e.append(f"OS error while adding repository {name}. See logs for more information.")
                     self.logger.exception(
                         "Something went wrong trying to add repo %s under name %s",
                         url,
@@ -206,23 +183,19 @@ class Backup(commands.Cog):
                         continue
                     cog_modules.append(cog_module)
 
-                for cog in set(cog.name for cog in cog_modules):
+                for cog in {cog.name for cog in cog_modules}:
                     poss_installed_path = (await downloader.cog_install_path()) / cog
                     if poss_installed_path.exists():
                         with contextlib.suppress(commands.ExtensionNotLoaded):
                             await ctx.bot.unload_extension(cog)
                             await ctx.bot.remove_loaded_package(cog)
-                        await downloader._delete_cog(
-                            poss_installed_path
-                        )
+                        await downloader._delete_cog(poss_installed_path)
                         uninstall_s.append(f"Uninstalled {cog}")
                         self.logger.debug("Uninstalled %s", cog)
                     else:
                         uninstall_e.append(f"Failed to uninstall {cog}")
                         self.logger.warning("Failed to uninstall %s", cog)
-                await downloader._remove_from_installed(
-                    cog_modules
-                )
+                await downloader._remove_from_installed(cog_modules)
 
                 for cog in cogs:
                     cog_name = cog["name"]
@@ -236,25 +209,15 @@ class Backup(commands.Cog):
                     if cog_name == "backup" and "cswimr/SeaCogs" in url:
                         continue
 
-                    async with repository.checkout(
-                        commit, exit_to_rev=repository.branch
-                    ):
-                        cogs_c, message = (
-                            await downloader._filter_incorrect_cogs_by_names(
-                                repository, [cog_name]
-                            )
-                        )
+                    async with repository.checkout(commit, exit_to_rev=repository.branch):
+                        cogs_c, message = await downloader._filter_incorrect_cogs_by_names(repository, [cog_name])
                         if not cogs_c:
                             install_e.append(message)
                             self.logger.error(message)
                             continue
-                        failed_reqs = await downloader._install_requirements(
-                            cogs_c
-                        )
+                        failed_reqs = await downloader._install_requirements(cogs_c)
                         if failed_reqs:
-                            install_e.append(
-                                f"Failed to install {cog_name} due to missing requirements: {failed_reqs}"
-                            )
+                            install_e.append(f"Failed to install {cog_name} due to missing requirements: {failed_reqs}")
                             self.logger.error(
                                 "Failed to install %s due to missing requirements: %s",
                                 cog_name,
@@ -262,51 +225,37 @@ class Backup(commands.Cog):
                             )
                             continue
 
-                        installed_cogs, failed_cogs = await downloader._install_cogs(
-                            cogs_c
-                        )
+                        installed_cogs, failed_cogs = await downloader._install_cogs(cogs_c)
 
                         if repository.available_libraries:
-                            installed_libs, failed_libs = (
-                                await repository.install_libraries(
-                                    target_dir=downloader.SHAREDLIB_PATH,
-                                    req_target_dir=downloader.LIB_PATH,
-                                )
+                            installed_libs, failed_libs = await repository.install_libraries(
+                                target_dir=downloader.SHAREDLIB_PATH,
+                                req_target_dir=downloader.LIB_PATH,
                             )
                         else:
                             installed_libs = None
                             failed_libs = None
 
                         if cog_pinned:
-                            for cog in installed_cogs:
+                            for cog in installed_cogs:  # noqa: PLW2901
                                 cog.pinned = True
 
-                        await downloader._save_to_installed(
-                            installed_cogs + installed_libs
-                            if installed_libs
-                            else installed_cogs
-                        )
+                        await downloader._save_to_installed(installed_cogs + installed_libs if installed_libs else installed_cogs)
                         if installed_cogs:
                             installed_cog_name = installed_cogs[0].name
                             install_s.append(f"Installed {installed_cog_name}")
                             self.logger.debug("Installed %s", installed_cog_name)
                         if installed_libs:
                             for lib in installed_libs:
-                                install_s.append(
-                                    f"Installed {lib.name} required for {cog_name}"
-                                )
-                                self.logger.debug(
-                                    "Installed %s required for %s", lib.name, cog_name
-                                )
+                                install_s.append(f"Installed {lib.name} required for {cog_name}")
+                                self.logger.debug("Installed %s required for %s", lib.name, cog_name)
                         if failed_cogs:
                             failed_cog_name = failed_cogs[0].name
                             install_e.append(f"Failed to install {failed_cog_name}")
                             self.logger.error("Failed to install %s", failed_cog_name)
                         if failed_libs:
                             for lib in failed_libs:
-                                install_e.append(
-                                    f"Failed to install {lib.name} required for {cog_name}"
-                                )
+                                install_e.append(f"Failed to install {lib.name} required for {cog_name}")
                                 self.logger.error(
                                     "Failed to install %s required for %s",
                                     lib.name,

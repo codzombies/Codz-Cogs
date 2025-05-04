@@ -1,15 +1,22 @@
 {
-  "author" : ["cswimr"],
-  "install_msg" : "Thank you for installing Backup!\nYou can find the source code of this cog [here](https://coastalcommits.com/cswimr/SeaCogs).",
-  "name" : "Backup",
-  "short" : "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
-  "description" : "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
-  "end_user_data_statement" : "This cog does not store end user data.",
+  "$schema": "https://raw.githubusercontent.com/Cog-Creators/Red-DiscordBot/refs/heads/V3/develop/schema/red_cog_repo.schema.json",
+  "author": [
+    "cswimr"
+  ],
+  "install_msg": "Thank you for installing Backup!\nYou can find the source code of this cog [here](https://coastalcommits.com/cswimr/SeaCogs).",
+  "name": "Backup",
+  "short": "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
+  "description": "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
+  "end_user_data_statement": "This cog does not store end user data.",
   "hidden": false,
   "disabled": false,
   "min_bot_version": "3.5.6",
-  "max_bot_version": "3.5.13",
-  "min_python_version": [3, 9, 0],
+  "max_bot_version": "3.5.20",
+  "min_python_version": [
+    3,
+    9,
+    0
+  ],
   "tags": [
     "utility",
     "backup",
