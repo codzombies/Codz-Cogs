@@ -3,7 +3,7 @@
   "author": [
     "cswimr"
   ],
-  "install_msg": "Thank you for installing Backup!\nYou can find the source code of this cog [here](https://coastalcommits.com/cswimr/SeaCogs).",
+  "install_msg": "Thank you for installing Backup!\nYou can find the source code of this cog [here](https://c.csw.im/cswimr/SeaCogs).",
   "name": "Backup",
   "short": "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
   "description": "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
@@ -16,6 +16,9 @@
     3,
     9,
     0
+  ],
+  "requirements": [
+    "red-tidegear>=1.0.6"
   ],
   "tags": [
     "utility",

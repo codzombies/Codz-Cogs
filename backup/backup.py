@@ -9,46 +9,27 @@ import contextlib
 import json
 import re
 
-from red_commons.logging import getLogger
 from redbot.cogs.downloader import errors
 from redbot.cogs.downloader.converters import InstalledCog
 from redbot.core import commands
 from redbot.core.bot import Red
-from redbot.core.utils.chat_formatting import bold, error, humanize_list, text_to_file
+from redbot.core.utils import chat_formatting as cf
+from tidegear import Cog, send_error
 
 
-# Disable Ruff & Pylint complaining about accessing private members
+# Disable Ruff complaining about accessing private members
 # That's kind of necessary for this cog to function because the Downloader cog has a limited public API
 # ruff: noqa: SLF001 # Private member access
-# pylint: disable=protected-access
-class Backup(commands.Cog):
+class Backup(Cog):
     """A utility to make reinstalling repositories and cogs after migrating the bot far easier."""
 
-    __author__ = ["[cswimr](https://www.coastalcommits.com/cswimr)"]
-    __git__ = "https://www.coastalcommits.com/cswimr/SeaCogs"
-    __version__ = "1.1.4"
-    __documentation__ = "https://seacogs.coastalcommits.com/backup/"
+    def __init__(self, bot: Red) -> None:
+        super().__init__(bot)
 
-    def __init__(self, bot: Red):
-        super().__init__()
-        self.bot = bot
-        self.logger = getLogger("red.SeaCogs.Backup")
-
-    def format_help_for_context(self, ctx: commands.Context) -> str:
-        pre_processed = super().format_help_for_context(ctx) or ""
-        n = "\n" if "\n\n" not in pre_processed else ""
-        text = [
-            f"{pre_processed}{n}",
-            f"{bold('Cog Version:')} [{self.__version__}]({self.__git__})",
-            f"{bold('Author:')} {humanize_list(self.__author__)}",
-            f"{bold('Documentation:')} {self.__documentation__}",
-        ]
-        return "\n".join(text)
-
-    @commands.group(autohelp=True)  # type: ignore
-    @commands.has_permissions(administrator=True)
+    @commands.group(autohelp=True)
     async def backup(self, ctx: commands.Context) -> None:
         """Backup your installed cogs."""
+        _ = ctx
 
     @backup.command(name="export")
     @commands.has_permissions(administrator=True)
@@ -56,7 +37,7 @@ class Backup(commands.Cog):
         """Export your installed repositories and cogs to a file."""
         downloader = ctx.bot.get_cog("Downloader")
         if downloader is None:
-            await ctx.send(error(f"You do not have the `Downloader` cog loaded. Please run `{ctx.prefix}load downloader` and try again."))
+            await send_error(ctx, content=f"You do not have the `Downloader` cog loaded. Please run `{ctx.clean_prefix}load downloader` and try again.")
             return
 
         all_repos = list(downloader._repo_manager.repos)
@@ -87,10 +68,10 @@ class Backup(commands.Cog):
 
             export_data.append(repo_dict)
 
-        await ctx.send(file=text_to_file(json.dumps(export_data, indent=4), "backup.json"))
+        await ctx.send(file=cf.text_to_file(json.dumps(export_data, indent=4), "backup.json"))
 
     @backup.command(name="import")
-    @commands.has_permissions(administrator=True)
+    @commands.is_owner()
     async def backup_import(self, ctx: commands.Context) -> None:
         """Import your installed repositories and cogs from an export file."""
         try:
@@ -99,12 +80,12 @@ class Backup(commands.Cog):
             try:
                 export = json.loads(await ctx.message.reference.resolved.attachments[0].read())  # type: ignore - this is fine to let error because it gets handled
             except (json.JSONDecodeError, IndexError, AttributeError):
-                await ctx.send(error("Please provide a valid JSON export file."))
+                await send_error(ctx, content="Please provide a valid JSON export file.")
                 return
 
         downloader = ctx.bot.get_cog("Downloader")
         if downloader is None:
-            await ctx.send(error(f"You do not have the `Downloader` cog loaded. Please run `{ctx.prefix}load downloader` and try again."))
+            await send_error(ctx, content=f"You do not have the `Downloader` cog loaded. Please run `{ctx.clean_prefix}load downloader` and try again.")
             return
 
         repo_s = []
@@ -263,7 +244,7 @@ class Backup(commands.Cog):
                                 )
         await ctx.send(
             "Import complete!",
-            file=text_to_file(
+            file=cf.text_to_file(
                 f"Repositories:\n{repo_s}\n\nRepository Errors:\n{repo_e}\n\nUninstalled Cogs:\n{uninstall_s}\n\nUninstalled Cogs Errors:\n{uninstall_e}\n\nInstalled Cogs:\n{install_s}\n\nInstalled Cogs Errors:\n{install_e}",
                 "backup.log",
             ),
