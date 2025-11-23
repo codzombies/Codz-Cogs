@@ -1,6 +1,6 @@
 {
   "$schema": "https://c.csw.im/cswimr/tidegear/raw/branch/main/schema/meta/meta.json",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "authors": [
     {
       "name": "cswimr",

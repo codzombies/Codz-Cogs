@@ -1,9 +1,5 @@
-#   _____                         _
-#  / ____|                       (_)
-# | (___   ___  __ _ _____      ___ _ __ ___  _ __ ___   ___ _ __
-#  \___ \ / _ \/ _` / __\ \ /\ / / | '_ ` _ \| '_ ` _ \ / _ \ '__|
-#  ____) |  __/ (_| \__ \\ V  V /| | | | | | | | | | | |  __/ |
-# |_____/ \___|\__,_|___/ \_/\_/ |_|_| |_| |_|_| |_| |_|\___|_|
+# SPDX-FileCopyrightText: 2025 cswimr <copyright@csw.im>
+# SPDX-License-Identifier: MPL-2.0
 
 import contextlib
 import json
@@ -14,7 +10,8 @@ from redbot.cogs.downloader.converters import InstalledCog
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.utils import chat_formatting as cf
-from tidegear import Cog, send_error
+from tidegear import Cog
+from tidegear.utils import send_error
 
 
 # Disable Ruff complaining about accessing private members
@@ -37,7 +34,9 @@ class Backup(Cog):
         """Export your installed repositories and cogs to a file."""
         downloader = ctx.bot.get_cog("Downloader")
         if downloader is None:
-            await send_error(ctx, content=f"You do not have the `Downloader` cog loaded. Please run `{ctx.clean_prefix}load downloader` and try again.")
+            await send_error(
+                ctx, content=f"You do not have the `Downloader` cog loaded. Please run `{ctx.clean_prefix}load downloader` and try again."
+            )
             return
 
         all_repos = list(downloader._repo_manager.repos)
@@ -85,7 +84,9 @@ class Backup(Cog):
 
         downloader = ctx.bot.get_cog("Downloader")
         if downloader is None:
-            await send_error(ctx, content=f"You do not have the `Downloader` cog loaded. Please run `{ctx.clean_prefix}load downloader` and try again.")
+            await send_error(
+                ctx, content=f"You do not have the `Downloader` cog loaded. Please run `{ctx.clean_prefix}load downloader` and try again."
+            )
             return
 
         repo_s = []
@@ -110,7 +111,9 @@ class Backup(Cog):
                     repo_e.append(f"Invalid repository name: {name}\nRepository names cannot start or end with a dot.")
                     continue
                 if re.match(r"^[a-zA-Z0-9_\-\.]+$", name) is None:
-                    repo_e.append(f"Invalid repository name: {name}\nRepository names may only contain letters, numbers, underscores, hyphens, and dots.")
+                    repo_e.append(
+                        f"Invalid repository name: {name}\nRepository names may only contain letters, numbers, underscores, hyphens, and dots."
+                    )
                     continue
 
                 try:
@@ -245,7 +248,10 @@ class Backup(Cog):
         await ctx.send(
             "Import complete!",
             file=cf.text_to_file(
-                f"Repositories:\n{repo_s}\n\nRepository Errors:\n{repo_e}\n\nUninstalled Cogs:\n{uninstall_s}\n\nUninstalled Cogs Errors:\n{uninstall_e}\n\nInstalled Cogs:\n{install_s}\n\nInstalled Cogs Errors:\n{install_e}",
+                (
+                    f"Repositories:\n{repo_s}\n\nRepository Errors:\n{repo_e}\n\nUninstalled Cogs:\n{uninstall_s}\n"
+                    f"\nUninstalled Cogs Errors:\n{uninstall_e}\n\nInstalled Cogs:\n{install_s}\n\nInstalled Cogs Errors:\n{install_e}"
+                ),
                 "backup.log",
             ),
         )
