@@ -9,7 +9,7 @@ from redbot.cogs.modlog import ModLog
 from redbot.core.bot import Red
 from redbot.core.modlog import Case, get_cases_for_member, get_casetype
 from redbot.core.utils import chat_formatting as cf
-from redbot.core.utils.menus import menu
+from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 
 _ = Translator("Check", __file__)
 _T = TypeVar("_T")
@@ -24,7 +24,7 @@ def chunks(l: List[_T], n: int):
 class Check(commands.Cog):
     """Check"""
 
-    __version__ = "2.2.0"
+    __version__ = "2.2.0-etn_1.1"
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         # Thanks Sinbad! And Trusty in whose cogs I found this.
@@ -53,6 +53,7 @@ class Check(commands.Cog):
         await self._maybe_altmarker(ctx, member)
         await self._warnings_or_read(ctx, member)
         await self._maybe_listflag(ctx, member)
+        await self._defender_messages(ctx, member)
 
     async def _userinfo(self, ctx, member):
         try:
@@ -132,3 +133,45 @@ class Check(commands.Cog):
             await ctx.invoke(ctx.bot.get_command("alt get"), member=member)
         except:
             self.log.debug("Altmarker not found.")
+
+    async def _defender_messages(self, ctx, member):
+        """Display cached messages from Defender for the user"""
+        try:
+            # Try to get Defender cog
+            defender = ctx.bot.get_cog("Defender")
+            if not defender:
+                self.log.debug("Defender cog not found.")
+                return
+
+            # Try to use Defender's make_message_log method directly
+            # This is the same method used by the defender messages user command
+            pages = await defender.make_message_log(
+                member, 
+                guild=ctx.guild, 
+                requester=ctx.author, 
+                pagify_log=True, 
+                replace_backtick=True
+            )
+
+            if not pages:
+                await ctx.send(f"No cached messages found for {member.display_name}.")
+                return
+
+            # Log to monitor like the original command does
+            self.send_to_monitor = getattr(defender, 'send_to_monitor', None)
+            if self.send_to_monitor:
+                self.send_to_monitor(
+                    ctx.guild, 
+                    f"{ctx.author} ({ctx.author.id}) accessed message history "
+                    f"of user {member} ({member.id}) via check command"
+                )
+
+            # Display using the same format as the defender command
+            if len(pages) == 1:
+                await ctx.send(cf.box(pages[0], lang="md"))
+            else:
+                pages = [cf.box(p, lang="md") for p in pages]
+                await menu(ctx, pages, DEFAULT_CONTROLS)
+            
+        except Exception as e:
+            self.log.exception(f"Error retrieving defender messages: {e}", exc_info=True)
