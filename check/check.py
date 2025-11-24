@@ -10,6 +10,7 @@ from redbot.core.bot import Red
 from redbot.core.modlog import Case, get_cases_for_member, get_casetype
 from redbot.core.utils import chat_formatting as cf
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
+import asyncio
 
 _ = Translator("Check", __file__)
 _T = TypeVar("_T")
@@ -24,7 +25,7 @@ def chunks(l: List[_T], n: int):
 class Check(commands.Cog):
     """Check"""
 
-    __version__ = "2.2.0-etn_1.1"
+    __version__ = "2.2.0-etn_1.2"
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         # Thanks Sinbad! And Trusty in whose cogs I found this.
@@ -38,6 +39,8 @@ class Check(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.log = logging.getLogger("red.cog.dav-cogs.check")
+        # Track ongoing message log generation to prevent duplicates
+        self._message_log_locks = {}
 
     @commands.command()
     @checks.mod()
@@ -143,35 +146,67 @@ class Check(commands.Cog):
                 self.log.debug("Defender cog not found.")
                 return
 
-            # Try to use Defender's make_message_log method directly
-            # This is the same method used by the defender messages user command
-            pages = await defender.make_message_log(
-                member, 
-                guild=ctx.guild, 
-                requester=ctx.author, 
-                pagify_log=True, 
-                replace_backtick=True
-            )
-
-            if not pages:
-                await ctx.send(f"No cached messages found for {member.display_name}.")
+            # Create a unique lock key for this guild + member combination
+            lock_key = (ctx.guild.id, member.id)
+            
+            # Check if message log is already being generated
+            if lock_key in self._message_log_locks:
+                # Skip silently to avoid duplicate output
+                self.log.debug(f"Message log already being generated for {member.id}, skipping duplicate call")
                 return
-
-            # Log to monitor like the original command does
-            self.send_to_monitor = getattr(defender, 'send_to_monitor', None)
-            if self.send_to_monitor:
-                self.send_to_monitor(
-                    ctx.guild, 
-                    f"{ctx.author} ({ctx.author.id}) accessed message history "
-                    f"of user {member} ({member.id}) via check command"
+            
+            # Create a lock and set a timeout flag
+            lock = asyncio.Lock()
+            self._message_log_locks[lock_key] = lock
+            
+            try:
+                # Try to acquire the lock with a timeout
+                try:
+                    await asyncio.wait_for(lock.acquire(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    # Another task is generating the log, skip this one
+                    self.log.debug(f"Could not acquire lock for {member.id}, another task is processing")
+                    return
+                
+                # Use Defender's make_message_log method directly
+                pages = await defender.make_message_log(
+                    member, 
+                    guild=ctx.guild, 
+                    requester=ctx.author, 
+                    pagify_log=True, 
+                    replace_backtick=True
                 )
 
-            # Display using the same format as the defender command
-            if len(pages) == 1:
-                await ctx.send(cf.box(pages[0], lang="md"))
-            else:
-                pages = [cf.box(p, lang="md") for p in pages]
-                await menu(ctx, pages, DEFAULT_CONTROLS)
+                if not pages:
+                    await ctx.send(f"No cached messages found for {member.display_name}.")
+                    return
+
+                # Log to monitor like the original command does
+                send_to_monitor = getattr(defender, 'send_to_monitor', None)
+                if send_to_monitor:
+                    send_to_monitor(
+                        ctx.guild, 
+                        f"{ctx.author} ({ctx.author.id}) accessed message history "
+                        f"of user {member} ({member.id}) via check command"
+                    )
+
+                # Display using the same format as the defender command
+                if len(pages) == 1:
+                    await ctx.send(cf.box(pages[0], lang="md"))
+                else:
+                    pages = [cf.box(p, lang="md") for p in pages]
+                    await menu(ctx, pages, DEFAULT_CONTROLS)
+                    
+            finally:
+                # Always release the lock and clean up
+                if lock.locked():
+                    lock.release()
+                # Remove the lock after a short delay to prevent immediate re-execution
+                await asyncio.sleep(2)
+                self._message_log_locks.pop(lock_key, None)
             
         except Exception as e:
             self.log.exception(f"Error retrieving defender messages: {e}", exc_info=True)
+            # Clean up lock on error
+            lock_key = (ctx.guild.id, member.id)
+            self._message_log_locks.pop(lock_key, None)
