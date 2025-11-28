@@ -250,37 +250,6 @@ class LinkWarner(commands.Cog):
             )
         await ctx.send(message)
 
-    # Delete delay commands
-    @linkwarner.group(name="deletedelay", invoke_without_command=True)
-    async def linkwarner_deletedelay(self, ctx: GuildContext, new_value: int) -> None:
-        """
-        Set the delete delay (in seconds) for the warning message.
-
-        Use `[p]linkwarner deletedelay disable` to disable auto-deletion.
-
-        Note: This does not work when the warning messages are sent through DMs.
-        """
-        if new_value < 1:
-            command = inline(f"{ctx.clean_prefix}linkwarner deletedelay disable")
-            await ctx.send(
-                "The delete delay cannot be lower than 1 second."
-                f" If you want to disable auto-deletion, use {command}."
-            )
-            return
-        if new_value > 300:
-            await ctx.send(
-                "The delete delay cannot be higher than 5 minutes (300 seconds)."
-            )
-            return
-
-        guild_data = await self.get_guild_data(ctx.guild)
-        await guild_data.set_delete_delay(new_value)
-        plural = "s" if new_value > 1 else ""
-        await ctx.send(
-            "Bot will now auto-delete the warning message"
-            f" after {new_value} second{plural}."
-        )
-
     # Warning cooldown
     @linkwarner.group(name="cooldown", invoke_without_command=True)
     async def linkwarner_cooldown(self, ctx: GuildContext, new_value: int) -> None:
@@ -317,6 +286,37 @@ class LinkWarner(commands.Cog):
         guild_data = await self.get_guild_data(ctx.guild)
         await guild_data.set_warn_cooldown(0)
         await ctx.send("Warning cooldown disabled.")
+
+    # Delete delay commands
+    @linkwarner.group(name="deletedelay", invoke_without_command=True)
+    async def linkwarner_deletedelay(self, ctx: GuildContext, new_value: int) -> None:
+        """
+        Set the delete delay (in seconds) for the warning message.
+
+        Use `[p]linkwarner deletedelay disable` to disable auto-deletion.
+
+        Note: This does not work when the warning messages are sent through DMs.
+        """
+        if new_value < 1:
+            command = inline(f"{ctx.clean_prefix}linkwarner deletedelay disable")
+            await ctx.send(
+                "The delete delay cannot be lower than 1 second."
+                f" If you want to disable auto-deletion, use {command}."
+            )
+            return
+        if new_value > 300:
+            await ctx.send(
+                "The delete delay cannot be higher than 5 minutes (300 seconds)."
+            )
+            return
+
+        guild_data = await self.get_guild_data(ctx.guild)
+        await guild_data.set_delete_delay(new_value)
+        plural = "s" if new_value > 1 else ""
+        await ctx.send(
+            "Bot will now auto-delete the warning message"
+            f" after {new_value} second{plural}."
+        )
 
     @linkwarner_deletedelay.command(name="disable")
     async def linkwarner_deletedelay_disable(self, ctx: GuildContext) -> None:
