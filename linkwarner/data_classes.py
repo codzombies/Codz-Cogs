@@ -102,6 +102,7 @@ class ScopeData(ABC):
         "scoped_warn_message",
         "domains_filter",
         "warn_message_template",
+        "warn_cooldown"
     )
     id: int
     domains_mode: DomainsMode
@@ -109,6 +110,7 @@ class ScopeData(ABC):
     scoped_warn_message: str
     domains_filter: Optional[Pattern[str]]
     warn_message_template: Optional[Template]
+    warn_cooldown: int
 
     @property
     @abstractmethod
@@ -238,6 +240,7 @@ class GuildData(ScopeData):
 
         self._update_domains_list()
         self._update_warn_message()
+        self.warn_cooldown = warn_cooldown
 
     @property
     def config_group(self) -> Group:
@@ -314,6 +317,10 @@ class GuildData(ScopeData):
     async def remove_excluded_roles(self, to_remove: Iterable[int]) -> None:
         self.excluded_roles.difference_update(to_remove)
         await self.config_group.excluded_roles.set(list(self.excluded_roles))
+
+    async def set_warn_cooldown(self, new_value: int) -> None:
+    self.warn_cooldown = new_value
+    await self.config_group.warn_cooldown.set(new_value)
 
     def _update_domains_list(self) -> None:
         if self.domains_list:

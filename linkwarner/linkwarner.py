@@ -15,6 +15,8 @@
 import logging
 from typing import Any, Dict, Literal, Union
 
+import time
+
 import discord
 from redbot.core import commands, modlog
 from redbot.core.bot import Red
@@ -55,6 +57,7 @@ class LinkWarner(commands.Cog):
             domains_mode=DomainsMode.ALLOW_FROM_SCOPE_LIST.value,
             domains_list=[],
             warn_message="",
+            warn_cooldown=0
         )
         self.config.register_channel(
             ignored=False,
@@ -63,6 +66,7 @@ class LinkWarner(commands.Cog):
             warn_message="",
         )
         self.guild_cache: Dict[int, GuildData] = {}
+        self.warn_cooldowns: Dict[int, float] = {}
 
     async def cog_load(self) -> None:
         try:
@@ -118,6 +122,8 @@ class LinkWarner(commands.Cog):
         guild_data = await self.get_guild_data(ctx.guild)
         enabled = "Yes" if guild_data.enabled else "No"
         use_dms = "Yes" if guild_data.use_dms else "No"
+        warn_cooldown = guild_data.warn_cooldown
+        cooldown_text = f"{warn_cooldown} seconds" if warn_cooldown > 0 else "Disabled"
         delete_delay = guild_data.delete_delay
         auto_deletion = f"After {delete_delay} seconds" if delete_delay else "Disabled"
         excluded_roles = (
@@ -146,6 +152,7 @@ class LinkWarner(commands.Cog):
             f"**Excluded roles:** {excluded_roles}\n"
             f"**Domains list mode:** {domains_mode}\n"
             f"**Domains list:** {domains_list}"
+            f"**Warning cooldown:** {cooldown_text}\n"
         )
 
     @linkwarner.group(name="channel")
@@ -273,6 +280,43 @@ class LinkWarner(commands.Cog):
             "Bot will now auto-delete the warning message"
             f" after {new_value} second{plural}."
         )
+
+    # Warning cooldown
+    @linkwarner.group(name="cooldown", invoke_without_command=True)
+    async def linkwarner_cooldown(self, ctx: GuildContext, new_value: int) -> None:
+        """
+        Set the cooldown (in seconds) between warnings for the same user.
+    
+        Use `[p]linkwarner cooldown disable` to disable the cooldown.
+    
+        This prevents spam in modlog when users repeatedly post forbidden links.
+        """
+        if new_value < 1:
+            command = inline(f"{ctx.clean_prefix}linkwarner cooldown disable")
+            await ctx.send(
+                "The cooldown cannot be lower than 1 second."
+                f" If you want to disable the cooldown, use {command}."
+            )
+            return
+        if new_value > 3600:
+            await ctx.send(
+                "The cooldown cannot be higher than 1 hour (3600 seconds)."
+            )
+            return
+
+    guild_data = await self.get_guild_data(ctx.guild)
+    await guild_data.set_warn_cooldown(new_value)
+    plural = "s" if new_value > 1 else ""
+    await ctx.send(
+        f"Warning cooldown set to {new_value} second{plural}."
+    )
+
+@linkwarner_cooldown.command(name="disable")
+async def linkwarner_cooldown_disable(self, ctx: GuildContext) -> None:
+    """Disable warning cooldown."""
+    guild_data = await self.get_guild_data(ctx.guild)
+    await guild_data.set_warn_cooldown(0)
+    await ctx.send("Warning cooldown disabled.")
 
     @linkwarner_deletedelay.command(name="disable")
     async def linkwarner_deletedelay_disable(self, ctx: GuildContext) -> None:
@@ -588,6 +632,18 @@ class LinkWarner(commands.Cog):
         channel_data = await self.get_channel_data(channel)
         guild_data = channel_data.guild_data
 
+        # Check cooldown
+        if guild_data.warn_cooldown > 0:
+            current_time = time.time()
+            last_warn_time = self.warn_cooldowns.get(author.id, 0)
+        if current_time - last_warn_time < guild_data.warn_cooldown:
+        # Still in cooldown, delete message but don't warn
+        try:
+            await message.delete()
+        except (discord.Forbidden, discord.NotFound):
+            pass
+        return
+
         assert guild.me is not None, "mypy"
         for match in URL_RE.finditer(message.content):
             if channel_data.is_url_allowed(match.group(2)):
@@ -645,6 +701,10 @@ class LinkWarner(commands.Cog):
                 channel=channel,
             )
             return
+
+            # Update cooldown tracker
+            if guild_data.warn_cooldown > 0:
+                self.warn_cooldowns[author.id] = time.time()
 
     @commands.Cog.listener()
     async def on_message_edit(
