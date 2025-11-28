@@ -304,11 +304,11 @@ class LinkWarner(commands.Cog):
             )
             return
 
-    guild_data = await self.get_guild_data(ctx.guild)
-    await guild_data.set_warn_cooldown(new_value)
-    plural = "s" if new_value > 1 else ""
-    await ctx.send(
-        f"Warning cooldown set to {new_value} second{plural}."
+        guild_data = await self.get_guild_data(ctx.guild)
+        await guild_data.set_warn_cooldown(new_value)
+        plural = "s" if new_value > 1 else ""
+        await ctx.send(
+            f"Warning cooldown set to {new_value} second{plural}."
     )
 
     @linkwarner_cooldown.command(name="disable")
