@@ -311,12 +311,12 @@ class LinkWarner(commands.Cog):
         f"Warning cooldown set to {new_value} second{plural}."
     )
 
-@linkwarner_cooldown.command(name="disable")
-async def linkwarner_cooldown_disable(self, ctx: GuildContext) -> None:
-    """Disable warning cooldown."""
-    guild_data = await self.get_guild_data(ctx.guild)
-    await guild_data.set_warn_cooldown(0)
-    await ctx.send("Warning cooldown disabled.")
+    @linkwarner_cooldown.command(name="disable")
+    async def linkwarner_cooldown_disable(self, ctx: GuildContext) -> None:
+        """Disable warning cooldown."""
+        guild_data = await self.get_guild_data(ctx.guild)
+        await guild_data.set_warn_cooldown(0)
+        await ctx.send("Warning cooldown disabled.")
 
     @linkwarner_deletedelay.command(name="disable")
     async def linkwarner_deletedelay_disable(self, ctx: GuildContext) -> None:
@@ -637,12 +637,12 @@ async def linkwarner_cooldown_disable(self, ctx: GuildContext) -> None:
             current_time = time.time()
             last_warn_time = self.warn_cooldowns.get(author.id, 0)
         if current_time - last_warn_time < guild_data.warn_cooldown:
-        # Still in cooldown, delete message but don't warn
-        try:
-            await message.delete()
-        except (discord.Forbidden, discord.NotFound):
-            pass
-        return
+            # Still in cooldown, delete message but don't warn
+            try:
+                await message.delete()
+            except (discord.Forbidden, discord.NotFound):
+                pass
+            return
 
         assert guild.me is not None, "mypy"
         for match in URL_RE.finditer(message.content):
