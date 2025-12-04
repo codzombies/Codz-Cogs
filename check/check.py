@@ -9,8 +9,7 @@ from redbot.cogs.modlog import ModLog
 from redbot.core.bot import Red
 from redbot.core.modlog import Case, get_cases_for_member, get_casetype
 from redbot.core.utils import chat_formatting as cf
-from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
-import asyncio
+from redbot.core.utils.menus import menu
 
 _ = Translator("Check", __file__)
 _T = TypeVar("_T")
@@ -25,7 +24,7 @@ def chunks(l: List[_T], n: int):
 class Check(commands.Cog):
     """Check"""
 
-    __version__ = "2.2.0-etn_1.2"
+    __version__ = "2.3.0"
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         # Thanks Sinbad! And Trusty in whose cogs I found this.
@@ -39,12 +38,10 @@ class Check(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.log = logging.getLogger("red.cog.dav-cogs.check")
-        # Track ongoing message log generation to prevent duplicates
-        self._message_log_locks = {}
 
     @commands.command()
     @checks.mod()
-    @commands.max_concurrency(1, commands.BucketType.guild)
+    @commands.max_concurrency(3, commands.BucketType.guild)
     async def check(self, ctx, member: discord.Member):
         ctx.assume_yes = True
         await ctx.send(
@@ -54,9 +51,17 @@ class Check(commands.Cog):
         )
         await self._userinfo(ctx, member)
         await self._maybe_altmarker(ctx, member)
-        await self._warnings_or_read(ctx, member)
-        await self._maybe_listflag(ctx, member)
-        await self._defender_messages(ctx, member)
+        
+        # Create tasks for modlog and defender messages to run concurrently
+        import asyncio
+        tasks = [
+            asyncio.create_task(self._warnings_or_read(ctx, member)),
+            asyncio.create_task(self._maybe_listflag(ctx, member)),
+            asyncio.create_task(self._maybe_defender_messages(ctx, member))
+        ]
+        
+        # Wait for all tasks to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _userinfo(self, ctx, member):
         try:
@@ -137,76 +142,84 @@ class Check(commands.Cog):
         except:
             self.log.debug("Altmarker not found.")
 
-    async def _defender_messages(self, ctx, member):
-        """Display cached messages from Defender for the user"""
+    async def _maybe_defender_messages(self, ctx, member):
+        """Display cached messages from Defender if available"""
         try:
-            # Try to get Defender cog
-            defender = ctx.bot.get_cog("Defender")
-            if not defender:
+            defender_cog = ctx.bot.get_cog("Defender")
+            if not defender_cog:
                 self.log.debug("Defender cog not found.")
                 return
 
-            # Create a unique lock key for this guild + member combination
-            lock_key = (ctx.guild.id, member.id)
-            
-            # Check if message log is already being generated
-            if lock_key in self._message_log_locks:
-                # Skip silently to avoid duplicate output
-                self.log.debug(f"Message log already being generated for {member.id}, skipping duplicate call")
-                return
-            
-            # Create a lock and set a timeout flag
-            lock = asyncio.Lock()
-            self._message_log_locks[lock_key] = lock
-            
+            # Import the cache module from defender
             try:
-                # Try to acquire the lock with a timeout
-                try:
-                    await asyncio.wait_for(lock.acquire(), timeout=0.1)
-                except asyncio.TimeoutError:
-                    # Another task is generating the log, skip this one
-                    self.log.debug(f"Could not acquire lock for {member.id}, another task is processing")
-                    return
+                from defender.core import cache as df_cache
+            except ImportError:
+                self.log.debug("Could not import Defender's cache module.")
+                return
+
+            # Get cached messages for the user
+            messages = df_cache.get_user_messages(member)
+            
+            if not messages:
+                await ctx.send(f"No cached messages found for {member.mention}.")
+                return
+
+            # Format the messages similar to Defender's format
+            text_unauthorized = "[You are not authorized to access that channel]"
+            _log = []
+
+            for m in messages:
+                ts = m.created_at.strftime("%H:%M:%S")
+                channel = ctx.guild.get_channel(m.channel_id) or ctx.guild.get_thread(m.channel_id)
                 
-                # Use Defender's make_message_log method directly
-                pages = await defender.make_message_log(
-                    member, 
-                    guild=ctx.guild, 
-                    requester=ctx.author, 
-                    pagify_log=True, 
-                    replace_backtick=True
+                # Check if requester has read permissions
+                if channel:
+                    requester_can_rm = channel.permissions_for(ctx.author).read_messages
+                else:
+                    requester_can_rm = True
+                
+                channel_name = f"#{channel.name}" if channel else str(m.channel_id)
+                content = m.content if requester_can_rm else text_unauthorized
+                
+                # Handle message edits
+                if m.edits:
+                    entry = len(m.edits) + 1
+                    _log.append(f"[{ts}]({channel_name})[{entry}] {content}")
+                    for edit in m.edits:
+                        entry -= 1
+                        ts_edit = edit.edited_at.strftime("%H:%M:%S")
+                        content_edit = edit.content if requester_can_rm else text_unauthorized
+                        _log.append(f"[{ts_edit}]({channel_name})[{entry}] {content_edit}")
+                else:
+                    _log.append(f"[{ts}]({channel_name}) {content}")
+
+            if not _log:
+                await ctx.send(f"No cached messages found for {member.mention}.")
+                return
+
+            # Replace backticks to prevent formatting issues
+            _log = [e.replace("`", "'") for e in _log]
+
+            # Create pages for the message log
+            from redbot.core.utils.chat_formatting import pagify, box
+            pages = []
+            for page in pagify("\n".join(_log), page_length=1300):
+                pages.append(box(page, lang="md"))
+
+            if len(pages) == 1:
+                await ctx.send(f"**Cached Messages for {member}:**\n{pages[0]}")
+            else:
+                # Add title to first page
+                pages[0] = f"**Cached Messages for {member}:**\n{pages[0]}"
+                await menu(ctx, pages)
+
+            # Log access to monitor if available
+            if hasattr(defender_cog, 'send_to_monitor'):
+                defender_cog.send_to_monitor(
+                    ctx.guild,
+                    f"{ctx.author} ({ctx.author.id}) accessed message history "
+                    f"of user {member} ({member.id}) via Check command"
                 )
 
-                if not pages:
-                    await ctx.send(f"No cached messages found for {member.display_name}.")
-                    return
-
-                # Log to monitor like the original command does
-                send_to_monitor = getattr(defender, 'send_to_monitor', None)
-                if send_to_monitor:
-                    send_to_monitor(
-                        ctx.guild, 
-                        f"{ctx.author} ({ctx.author.id}) accessed message history "
-                        f"of user {member} ({member.id}) via check command"
-                    )
-
-                # Display using the same format as the defender command
-                if len(pages) == 1:
-                    await ctx.send(cf.box(pages[0], lang="md"))
-                else:
-                    pages = [cf.box(p, lang="md") for p in pages]
-                    await menu(ctx, pages, DEFAULT_CONTROLS)
-                    
-            finally:
-                # Always release the lock and clean up
-                if lock.locked():
-                    lock.release()
-                # Remove the lock after a short delay to prevent immediate re-execution
-                await asyncio.sleep(2)
-                self._message_log_locks.pop(lock_key, None)
-            
         except Exception as e:
-            self.log.exception(f"Error retrieving defender messages: {e}", exc_info=True)
-            # Clean up lock on error
-            lock_key = (ctx.guild.id, member.id)
-            self._message_log_locks.pop(lock_key, None)
+            self.log.exception(f"Error retrieving Defender message cache: {e}", exc_info=True)
