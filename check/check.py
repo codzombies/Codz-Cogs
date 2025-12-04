@@ -24,7 +24,7 @@ def chunks(l: List[_T], n: int):
 class Check(commands.Cog):
     """Check"""
 
-    __version__ = "2.2.0-etn_1.3"
+    __version__ = "2.3.0"
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         # Thanks Sinbad! And Trusty in whose cogs I found this.
