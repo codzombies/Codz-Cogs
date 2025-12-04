@@ -41,7 +41,7 @@ class Check(commands.Cog):
 
     @commands.command()
     @checks.mod()
-    @commands.max_concurrency(1, commands.BucketType.guild)
+    @commands.max_concurrency(3, commands.BucketType.guild)
     async def check(self, ctx, member: discord.Member):
         ctx.assume_yes = True
         await ctx.send(
@@ -51,9 +51,17 @@ class Check(commands.Cog):
         )
         await self._userinfo(ctx, member)
         await self._maybe_altmarker(ctx, member)
-        await self._warnings_or_read(ctx, member)
-        await self._maybe_listflag(ctx, member)
-        await self._maybe_defender_messages(ctx, member)
+        
+        # Create tasks for modlog and defender messages to run concurrently
+        import asyncio
+        tasks = [
+            asyncio.create_task(self._warnings_or_read(ctx, member)),
+            asyncio.create_task(self._maybe_listflag(ctx, member)),
+            asyncio.create_task(self._maybe_defender_messages(ctx, member))
+        ]
+        
+        # Wait for all tasks to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _userinfo(self, ctx, member):
         try:
