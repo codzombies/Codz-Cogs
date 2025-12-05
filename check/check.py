@@ -42,22 +42,38 @@ class Check(commands.Cog):
     @commands.command()
     @checks.mod()
     @commands.max_concurrency(3, commands.BucketType.guild)
-    async def check(self, ctx, member: discord.Member):
+    async def check(self, ctx, user_id: Union[discord.Member, int]):
+        """Check information about a user (can be a member or user ID)"""
         ctx.assume_yes = True
-        await ctx.send(
-            _(":mag_right: Starting lookup for: {usermention}({userid})").format(
-                usermention=member.mention, userid=member.id
+        
+        # Determine if we have a member or just an ID
+        if isinstance(user_id, discord.Member):
+            member = user_id
+            user_id = member.id
+            await ctx.send(
+                _(":mag_right: Starting lookup for: {usermention}({userid})").format(
+                    usermention=member.mention, userid=user_id
+                )
             )
-        )
-        await self._userinfo(ctx, member)
-        await self._maybe_altmarker(ctx, member)
+            await self._userinfo(ctx, member)
+            await self._maybe_altmarker(ctx, member)
+        else:
+            # User is not in the server, skip userinfo
+            await ctx.send(
+                _(":mag_right: Starting lookup for: User ID {userid}").format(
+                    userid=user_id
+                )
+            )
+            await ctx.send(
+                cf.bold("User is not in the server. Userinfo display skipped.")
+            )
         
         # Create tasks for modlog and defender messages to run concurrently
         import asyncio
         tasks = [
-            asyncio.create_task(self._warnings_or_read(ctx, member)),
-            asyncio.create_task(self._maybe_listflag(ctx, member)),
-            asyncio.create_task(self._maybe_defender_messages(ctx, member))
+            asyncio.create_task(self._warnings_or_read(ctx, user_id)),
+            asyncio.create_task(self._maybe_listflag(ctx, user_id)),
+            asyncio.create_task(self._maybe_defender_messages(ctx, user_id))
         ]
         
         # Wait for all tasks to complete
@@ -74,9 +90,28 @@ class Check(commands.Cog):
         except Exception as e:
             self.log.exception(f"Error in userinfo {e}", exc_info=True)
 
-    async def _warnings_or_read(self, ctx, member):
+    async def _warnings_or_read(self, ctx, user_id):
+        """Display modlog cases for a user (accepts member or user ID)"""
         async with ctx.typing():
+            # Handle both Member objects and raw user IDs
+            if isinstance(user_id, discord.Member):
+                member = user_id
+                user_id = member.id
+                display_name = member.display_name
+            else:
+                member = ctx.guild.get_member(user_id)
+                if member:
+                    display_name = member.display_name
+                else:
+                    display_name = f"Unknown User ({user_id})"
+            
             try:
+                # Create a mock member object if we only have an ID
+                if not isinstance(member, discord.Member):
+                    from collections import namedtuple
+                    MockMember = namedtuple('MockMember', ['id', 'guild'])
+                    member = MockMember(id=user_id, guild=ctx.guild)
+                
                 cases = await get_cases_for_member(
                     bot=ctx.bot, guild=ctx.guild, member=member
                 )
@@ -86,13 +121,14 @@ class Check(commands.Cog):
                 return await ctx.send(
                     "Something unexpected went wrong while fetching that user by ID."
                 )
+            
             if not cases:
-                return await ctx.send("That user does not have any cases.")
+                return await ctx.send(cf.bold(f"No cases listed for {display_name}."))
 
             rendered_cases = []
             for page, ccases in enumerate(chunks(cases, 6), 1):
                 embed = discord.Embed(
-                    title=f"Cases for `{member.display_name}` (Page {page} / {len(cases) // 6 + 1 if len(cases) % 6 else len(cases) // 6})",
+                    title=f"Cases for `{display_name}` (Page {page} / {len(cases) // 6 + 1 if len(cases) % 6 else len(cases) // 6})",
                 )
                 for case in ccases:
                     if case.moderator is None:
@@ -130,8 +166,18 @@ class Check(commands.Cog):
 
         await menu(ctx, rendered_cases)
 
-    async def _maybe_listflag(self, ctx, member):
+    async def _maybe_listflag(self, ctx, user_id):
+        """Display flags for a user (accepts member or user ID)"""
         try:
+            # Try to get member object if we have an ID
+            if isinstance(user_id, int):
+                member = ctx.guild.get_member(user_id)
+                if not member:
+                    # Can't run listflag without a member object
+                    return
+            else:
+                member = user_id
+                
             await ctx.invoke(ctx.bot.get_command("listflag"), member=member)
         except:
             self.log.debug("Command listflag not found.")
@@ -142,8 +188,8 @@ class Check(commands.Cog):
         except:
             self.log.debug("Altmarker not found.")
 
-    async def _maybe_defender_messages(self, ctx, member):
-        """Display cached messages from Defender if available"""
+    async def _maybe_defender_messages(self, ctx, user_id):
+        """Display cached messages from Defender if available (accepts member or user ID)"""
         try:
             defender_cog = ctx.bot.get_cog("Defender")
             if not defender_cog:
@@ -157,11 +203,26 @@ class Check(commands.Cog):
                 self.log.debug("Could not import Defender's cache module.")
                 return
 
+            # Handle both Member objects and raw user IDs
+            if isinstance(user_id, discord.Member):
+                member = user_id
+                user_id = member.id
+                display_str = str(member)
+            else:
+                member = ctx.guild.get_member(user_id)
+                if member:
+                    display_str = str(member)
+                else:
+                    # Create a mock user object for cache lookup
+                    from defender.core.cache import CacheUser
+                    member = CacheUser(_id=user_id, guild=ctx.guild)
+                    display_str = f"Unknown User ({user_id})"
+
             # Get cached messages for the user
             messages = df_cache.get_user_messages(member)
             
             if not messages:
-                await ctx.send(f"No cached messages found for {member.mention}.")
+                await ctx.send(cf.bold(f"No cached messages found for {display_str}."))
                 return
 
             # Format the messages similar to Defender's format
@@ -194,7 +255,7 @@ class Check(commands.Cog):
                     _log.append(f"[{ts}]({channel_name}) {content}")
 
             if not _log:
-                await ctx.send(f"No cached messages found for {member.mention}.")
+                await ctx.send(cf.bold(f"No cached messages found for {display_str}."))
                 return
 
             # Replace backticks to prevent formatting issues
@@ -207,10 +268,10 @@ class Check(commands.Cog):
                 pages.append(box(page, lang="md"))
 
             if len(pages) == 1:
-                await ctx.send(f"**Cached Messages for {member}:**\n{pages[0]}")
+                await ctx.send(cf.bold(f"Cached Messages for {display_str}:") + f"\n{pages[0]}")
             else:
                 # Add title to first page
-                pages[0] = f"**Cached Messages for {member}:**\n{pages[0]}"
+                pages[0] = cf.bold(f"Cached Messages for {display_str}:") + f"\n{pages[0]}"
                 await menu(ctx, pages)
 
             # Log access to monitor if available
@@ -218,7 +279,7 @@ class Check(commands.Cog):
                 defender_cog.send_to_monitor(
                     ctx.guild,
                     f"{ctx.author} ({ctx.author.id}) accessed message history "
-                    f"of user {member} ({member.id}) via Check command"
+                    f"of user {user_id} via Check command"
                 )
 
         except Exception as e:
