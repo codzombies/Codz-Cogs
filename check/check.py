@@ -51,7 +51,7 @@ class Check(commands.Cog):
             member = user_id
             user_id = member.id
             await ctx.send(
-                _(":mag_right: Starting lookup for: {usermention}({userid})").format(
+                _cf.bold(":mag_right: Starting lookup for: {usermention}({userid})").format(
                     usermention=member.mention, userid=user_id
                 )
             )
@@ -60,7 +60,7 @@ class Check(commands.Cog):
         else:
             # User is not in the server, skip userinfo
             await ctx.send(
-                _(":mag_right: Starting lookup for: {userid}").format(
+                _cf.bold(":mag_right: Starting lookup for: {userid}").format(
                     userid=user_id
                 )
             )
