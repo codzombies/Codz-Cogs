@@ -51,7 +51,7 @@ class Check(commands.Cog):
             member = user_id
             user_id = member.id
             await ctx.send(
-                cf.bold(_(":mag_right: Starting lookup for: {usermention}({userid})").format(
+                cf.bold(_("🔎 Starting lookup for: {usermention}({userid})").format(
                     usermention=member.mention, userid=user_id
                 ))
             )
@@ -60,12 +60,12 @@ class Check(commands.Cog):
         else:
             # User is not in the server, skip userinfo
             await ctx.send(
-                cf.bold(_(":mag_right: Starting lookup for: User ID {userid}").format(
+                cf.bold(_("🔎 Starting lookup for: User ID {userid}").format(
                     userid=user_id
                 ))
             )
             await ctx.send(
-                cf.bold("User is not in the server. Userinfo display skipped.")
+                cf.bold("ℹ️ User is not in the server. Userinfo display skipped.")
             )
         
         # Create tasks for modlog and defender messages to run concurrently
@@ -116,10 +116,10 @@ class Check(commands.Cog):
                     bot=ctx.bot, guild=ctx.guild, member=member
                 )
             except discord.NotFound:
-                return await ctx.send(":x: That user does not exist.")
+                return await ctx.send("❌ That user does not exist.")
             except discord.HTTPException:
                 return await ctx.send(
-                    ":x: Something unexpected went wrong while fetching that user by ID."
+                    "❌ Something unexpected went wrong while fetching that user by ID."
                 )
             
             if not cases:
@@ -268,10 +268,10 @@ class Check(commands.Cog):
                 pages.append(box(page, lang="md"))
 
             if len(pages) == 1:
-                await ctx.send(cf.bold(f"✅ Cached Messages for {display_str}:") + f"\n{pages[0]}")
+                await ctx.send(cf.bold(f"👉 Cached Messages for {display_str}:") + f"\n{pages[0]}")
             else:
                 # Add title to first page
-                pages[0] = cf.bold(f"✅ Cached Messages for {display_str}:") + f"\n{pages[0]}"
+                pages[0] = cf.bold(f"👉 Cached Messages for {display_str}:") + f"\n{pages[0]}"
                 await menu(ctx, pages)
 
             # Log access to monitor if available
