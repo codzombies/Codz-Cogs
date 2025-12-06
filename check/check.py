@@ -51,21 +51,21 @@ class Check(commands.Cog):
             member = user_id
             user_id = member.id
             await ctx.send(
-                _cf.bold(":mag_right: Starting lookup for: {usermention}({userid})").format(
+                cf.bold(_(":mag_right: Starting lookup for: {usermention}({userid})").format(
                     usermention=member.mention, userid=user_id
-                )
+                ))
             )
             await self._userinfo(ctx, member)
             await self._maybe_altmarker(ctx, member)
         else:
             # User is not in the server, skip userinfo
             await ctx.send(
-                _cf.bold(":mag_right: Starting lookup for: {userid}").format(
+                cf.bold(_(":mag_right: Starting lookup for: User ID {userid}").format(
                     userid=user_id
-                )
+                ))
             )
             await ctx.send(
-                cf.bold("⚠️ User is not in the server. Userinfo display skipped.")
+                cf.bold("User is not in the server. Userinfo display skipped.")
             )
         
         # Create tasks for modlog and defender messages to run concurrently
