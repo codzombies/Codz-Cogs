@@ -60,7 +60,7 @@ class Check(commands.Cog):
         else:
             # User is not in the server, skip userinfo
             await ctx.send(
-                _(":mag_right: Starting lookup for: {usermention}({userid})").format(
+                _(":mag_right: Starting lookup for: {userid}").format(
                     userid=user_id
                 )
             )
