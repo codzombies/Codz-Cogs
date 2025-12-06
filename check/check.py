@@ -230,7 +230,7 @@ class Check(commands.Cog):
             messages = df_cache.get_user_messages(member)
             
             if not messages:
-                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}. (Total messages: {total_messages})"))
+                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}. (Total messages sent in server: {total_messages})"))
                 return
 
             # Format the messages similar to Defender's format
@@ -263,7 +263,7 @@ class Check(commands.Cog):
                     _log.append(f"[{ts}]({channel_name}) {content}")
 
             if not _log:
-                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}. (Total messages: {total_messages})"))
+                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}. (Total messages sent in server: {total_messages})"))
                 return
 
             # Replace backticks to prevent formatting issues
@@ -276,10 +276,10 @@ class Check(commands.Cog):
                 pages.append(box(page, lang="md"))
 
             if len(pages) == 1:
-                await ctx.send(cf.bold(f"👉 Cached Messages for {display_str}: (Total messages: {total_messages})") + f"\n{pages[0]}")
+                await ctx.send(cf.bold(f"👉 Cached Messages for {display_str}: (Total messages sent in server: {total_messages})") + f"\n{pages[0]}")
             else:
                 # Add title to first page
-                pages[0] = cf.bold(f"👉 Cached Messages for {display_str}: (Total messages: {total_messages})") + f"\n{pages[0]}"
+                pages[0] = cf.bold(f"👉 Cached Messages for {display_str}: (Total messages sent in server: {total_messages})") + f"\n{pages[0]}"
                 await menu(ctx, pages)
 
             # Log access to monitor if available
