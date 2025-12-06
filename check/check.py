@@ -56,6 +56,7 @@ class Check(commands.Cog):
                 ))
             )
             await self._userinfo(ctx, member)
+            await self._display_message_count(ctx, member)
             await self._maybe_altmarker(ctx, member)
         else:
             # User is not in the server, skip userinfo
@@ -67,6 +68,8 @@ class Check(commands.Cog):
             await ctx.send(
                 cf.bold("ℹ️ User is not in the server. Userinfo display skipped.")
             )
+            # Still show message count for users not in server
+            await self._display_message_count(ctx, user_id)
         
         # Create tasks for modlog and defender messages to run concurrently
         import asyncio
@@ -187,6 +190,41 @@ class Check(commands.Cog):
             await ctx.invoke(ctx.bot.get_command("alt get"), member=member)
         except:
             self.log.debug("Altmarker not found.")
+
+    async def _display_message_count(self, ctx, user_id):
+        """Display the total number of recorded messages from Defender"""
+        try:
+            defender_cog = ctx.bot.get_cog("Defender")
+            if not defender_cog:
+                self.log.debug("Defender cog not found for message count.")
+                return
+
+            # Handle both Member objects and raw user IDs
+            if isinstance(user_id, discord.Member):
+                member = user_id
+            else:
+                member = ctx.guild.get_member(user_id)
+                if not member:
+                    # Create a mock user object for the check
+                    try:
+                        from defender.core.cache import CacheUser
+                        member = CacheUser(_id=user_id, guild=ctx.guild)
+                    except ImportError:
+                        self.log.debug("Could not import Defender's cache module.")
+                        return
+
+            # Get the total recorded messages using Defender's method
+            if hasattr(defender_cog, 'get_total_recorded_messages'):
+                try:
+                    messages = await defender_cog.get_total_recorded_messages(member)
+                    await ctx.send(cf.bold(f"📊 Total messages recorded: {messages}"))
+                except Exception as e:
+                    self.log.debug(f"❌ Error getting message count: {e}")
+            else:
+                self.log.debug("Defender doesn't have get_total_recorded_messages method.")
+
+        except Exception as e:
+            self.log.exception(f"❌ Error displaying message count: {e}", exc_info=True)
 
     async def _maybe_defender_messages(self, ctx, user_id):
         """Display cached messages from Defender if available (accepts member or user ID)"""
