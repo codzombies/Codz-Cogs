@@ -218,11 +218,19 @@ class Check(commands.Cog):
                     member = CacheUser(_id=user_id, guild=ctx.guild)
                     display_str = f"Unknown User ({user_id})"
 
+            # Get the total recorded messages using Defender's method
+            total_messages = 0
+            if hasattr(defender_cog, 'get_total_recorded_messages'):
+                try:
+                    total_messages = await defender_cog.get_total_recorded_messages(member)
+                except Exception as e:
+                    self.log.debug(f"Error getting message count: {e}")
+
             # Get cached messages for the user
             messages = df_cache.get_user_messages(member)
             
             if not messages:
-                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}."))
+                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}. (Total messages sent in server: {total_messages})"))
                 return
 
             # Format the messages similar to Defender's format
@@ -255,7 +263,7 @@ class Check(commands.Cog):
                     _log.append(f"[{ts}]({channel_name}) {content}")
 
             if not _log:
-                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}."))
+                await ctx.send(cf.bold(f"👉 No cached messages found for {display_str}. (Total messages sent in server: {total_messages})"))
                 return
 
             # Replace backticks to prevent formatting issues
@@ -268,10 +276,10 @@ class Check(commands.Cog):
                 pages.append(box(page, lang="md"))
 
             if len(pages) == 1:
-                await ctx.send(cf.bold(f"👉 Cached Messages for {display_str}:") + f"\n{pages[0]}")
+                await ctx.send(cf.bold(f"👉 Cached Messages for {display_str}: (Total messages sent in server: {total_messages})") + f"\n{pages[0]}")
             else:
                 # Add title to first page
-                pages[0] = cf.bold(f"👉 Cached Messages for {display_str}:") + f"\n{pages[0]}"
+                pages[0] = cf.bold(f"👉 Cached Messages for {display_str}: (Total messages sent in server: {total_messages})") + f"\n{pages[0]}"
                 await menu(ctx, pages)
 
             # Log access to monitor if available
