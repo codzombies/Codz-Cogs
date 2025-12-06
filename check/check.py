@@ -60,12 +60,12 @@ class Check(commands.Cog):
         else:
             # User is not in the server, skip userinfo
             await ctx.send(
-                _(":mag_right: Starting lookup for: User ID {userid}").format(
+                _(":mag_right: Starting lookup for: {usermention}({userid})").format(
                     userid=user_id
                 )
             )
             await ctx.send(
-                cf.bold("User is not in the server. Userinfo display skipped.")
+                cf.bold(":red_circle: User is not in the server. Userinfo display skipped.")
             )
         
         # Create tasks for modlog and defender messages to run concurrently
@@ -116,14 +116,14 @@ class Check(commands.Cog):
                     bot=ctx.bot, guild=ctx.guild, member=member
                 )
             except discord.NotFound:
-                return await ctx.send("That user does not exist.")
+                return await ctx.send(":x: That user does not exist.")
             except discord.HTTPException:
                 return await ctx.send(
-                    "Something unexpected went wrong while fetching that user by ID."
+                    ":x: Something unexpected went wrong while fetching that user by ID."
                 )
             
             if not cases:
-                return await ctx.send(cf.bold(f"No cases listed for {display_name}."))
+                return await ctx.send(cf.bold(f":red_circle: No cases listed for {display_name}."))
 
             rendered_cases = []
             for page, ccases in enumerate(chunks(cases, 6), 1):
@@ -222,7 +222,7 @@ class Check(commands.Cog):
             messages = df_cache.get_user_messages(member)
             
             if not messages:
-                await ctx.send(cf.bold(f"No cached messages found for {display_str}."))
+                await ctx.send(cf.bold(f":red_circle: No cached messages found for {display_str}."))
                 return
 
             # Format the messages similar to Defender's format
@@ -255,7 +255,7 @@ class Check(commands.Cog):
                     _log.append(f"[{ts}]({channel_name}) {content}")
 
             if not _log:
-                await ctx.send(cf.bold(f"No cached messages found for {display_str}."))
+                await ctx.send(cf.bold(f":red_circle: No cached messages found for {display_str}."))
                 return
 
             # Replace backticks to prevent formatting issues
@@ -268,10 +268,10 @@ class Check(commands.Cog):
                 pages.append(box(page, lang="md"))
 
             if len(pages) == 1:
-                await ctx.send(cf.bold(f"Cached Messages for {display_str}:") + f"\n{pages[0]}")
+                await ctx.send(cf.bold(f":green_circle: Cached Messages for {display_str}:") + f"\n{pages[0]}")
             else:
                 # Add title to first page
-                pages[0] = cf.bold(f"Cached Messages for {display_str}:") + f"\n{pages[0]}"
+                pages[0] = cf.bold(f":green_circle: Cached Messages for {display_str}:") + f"\n{pages[0]}"
                 await menu(ctx, pages)
 
             # Log access to monitor if available
@@ -279,7 +279,7 @@ class Check(commands.Cog):
                 defender_cog.send_to_monitor(
                     ctx.guild,
                     f"{ctx.author} ({ctx.author.id}) accessed message history "
-                    f"of user {user_id} via Check command"
+                    f"of user {user_id} via check command"
                 )
 
         except Exception as e:
