@@ -1,0 +1,9 @@
+{
+    "author": ["Eternalll"],
+    "description": "Control where users can post Discord stickers using blacklist/whitelist systems",
+    "install_msg": "Thanks for installing StickerControl! Use `[p]stickercontrol` to get started. You'll need Manage Server permissions to configure it.",
+    "short": "Manage sticker posting permissions",
+    "tags": ["stickers", "moderation", "control", "permissions"],
+    "type": "COG",
+    "end_user_data_statement": "This cog does not store any user data."
+}
