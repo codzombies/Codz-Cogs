@@ -24,8 +24,7 @@ class StickerControl(commands.Cog):
     @checks.admin_or_permissions(manage_guild=True)
     async def stickercontrol(self, ctx):
         """Manage sticker posting restrictions"""
-        if ctx.invoked_subcommand is None:
-            await ctx.send_help(ctx.command)
+        pass
     
     @stickercontrol.command(name="mode")
     async def set_mode(self, ctx, mode: Literal["blacklist", "whitelist"]):
