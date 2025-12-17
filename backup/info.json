@@ -1,14 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/Cog-Creators/Red-DiscordBot/refs/heads/V3/develop/schema/red_cog_repo.schema.json",
   "author": [
-    "cswimr"
+    "cswimr", "Eternalll"
   ],
-  "install_msg": "Thank you for installing Backup!\nYou can find the source code of this cog [here](https://c.csw.im/cswimr/SeaCogs).",
+  "install_msg": "**__Anyone__ with bot administrator role set in `[p]set` can create backups! You should use the official version of backup if this is not intended!**.\nThank you for installing Backup!\nYou can find the source code of this cog [here](https://c.csw.im/cswimr/SeaCogs).",
   "name": "Backup",
   "short": "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
-  "description": "A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
+  "description": "Fork of backup that lowers permission requirement for backups to Administrator. A utility to make reinstalling repositories and cogs after migrating the bot far easier.",
   "end_user_data_statement": "This cog does not store end user data.",
-  "hidden": false,
+  "hidden": true,
   "disabled": false,
   "min_bot_version": "3.5.6",
   "max_bot_version": "3.5.22",
