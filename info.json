@@ -1,0 +1,17 @@
+{
+  "author": [
+    "EternalllZM"
+  ],
+  "description": "Successors to existing/deprecated cogs and some of our own used in the codzombies Discord.",
+  "install_msg": "Thanks for installing\nContributions back to these cogs are welcome via pull request on the repository.",
+  "name": "codz-cogs",
+  "short": "Cogs for codzombies",
+  "tags": [
+    "utilities",
+    "utility",
+    "tools",
+    "stickers",
+    "sticker",
+    "check"
+  ]
+}
