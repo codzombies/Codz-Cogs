@@ -29,7 +29,8 @@ SOFTWARE.
 import asyncio
 import contextlib
 import logging
-from typing import Any, Dict, Final, List, Literal, Optional, Union, cast
+import time
+from typing import Any, Dict, Final, List, Literal, Optional, Union, cast, final
 
 import diot
 import discord
@@ -63,7 +64,7 @@ class NoDMs(commands.Cog):
     """
 
     __author__: Final[List[str]] = ["inthedark.org"]
-    __version__: Final[str] = "0.1.0"
+    __version__: Final[str] = "0.2.0"
 
     def __init__(self, bot: Red) -> None:
         self.bot: Red = bot
@@ -73,6 +74,7 @@ class NoDMs(commands.Cog):
             str,
             Union[
                 bool,
+                int,
                 str,
                 Literal["all", "messages", "commands"],
                 Dict[str, Union[str, bool, List[int], List[str]]],
@@ -80,6 +82,7 @@ class NoDMs(commands.Cog):
         ] = dict(
             type="all",
             toggle=False,
+            cooldown=60,  # Default 60 seconds cooldown
             message=dict(
                 toggle=True,
                 message=message,
@@ -99,6 +102,9 @@ class NoDMs(commands.Cog):
         self.cache: diot.Diot = diot.Diot(**_default)
         self._cache_ready: asyncio.Event = asyncio.Event()
         self._task: asyncio.Task[None] = asyncio.create_task(self.initialize())
+        
+        # Cooldown tracking: {user_id: last_message_timestamp}
+        self._cooldowns: Dict[int, float] = {}
 
         self.bot.before_invoke(self._before_invoke_hook)
 
@@ -111,6 +117,26 @@ class NoDMs(commands.Cog):
             f"Author: **{humanize_list(self.__author__)}**",
         ]
         return "\n".join(text)
+
+    def _check_cooldown(self, user_id: int) -> bool:
+        """
+        Check if a user is on cooldown.
+        
+        Returns:
+            True if the user can receive a message (not on cooldown)
+            False if the user is on cooldown
+        """
+        current_time = time.time()
+        cooldown_seconds = self.cache.cooldown
+        
+        if user_id in self._cooldowns:
+            time_since_last = current_time - self._cooldowns[user_id]
+            if time_since_last < cooldown_seconds:
+                return False
+        
+        # Update the cooldown timestamp
+        self._cooldowns[user_id] = current_time
+        return True
 
     def get_users_from_cache(
         self, type: Literal["whitelist", "blacklist"]
@@ -178,6 +204,7 @@ class NoDMs(commands.Cog):
             str,
             Union[
                 bool,
+                int,
                 str,
                 Literal["all", "messages", "commands"],
                 Dict[str, Union[str, bool, List[int], List[str]]],
@@ -190,6 +217,7 @@ class NoDMs(commands.Cog):
             **dict(
                 type=config.get("type", "all"),
                 toggle=config.get("toggle", False),
+                cooldown=config.get("cooldown", 60),
                 message=dict(
                     toggle=message.get("toggle", True),
                     message=message.get("message", message),
@@ -214,6 +242,11 @@ class NoDMs(commands.Cog):
     async def _send_response(
         self, ctx: commands.Context, type: Literal["message", "command"]
     ) -> None:
+        # Check cooldown before sending
+        if not self._check_cooldown(ctx.author.id):
+            log.debug(f"User {ctx.author.id} is on cooldown, skipping response.")
+            return
+        
         kwargs: Dict[str, Any] = await process_tagscript(
             (
                 self.cache.message.message
@@ -385,7 +418,7 @@ class NoDMs(commands.Cog):
         Toggle whether to ignore DM messages and/or commands.
 
         Enabling the `<type>` argument `all` and `messages`
-        will cause botname] to delete messages everytime someone
+        will cause [botname] to delete messages everytime someone
         DMs [botname]. Unwanted behaviour may occur if
         people try to spam the bot's DMs while these types
         are enabled.
@@ -405,6 +438,34 @@ class NoDMs(commands.Cog):
         await ctx.tick(
             message="{} nodms for {}.".format("Enabled" if true_or_false else "Disabled", type)
         )
+
+    @_no_dms.command(name="cooldown")
+    async def _no_dms_cooldown(self, ctx: commands.Context, seconds: int):
+        """
+        Set the cooldown period for DM response messages.
+        
+        This prevents the bot from spamming users who repeatedly message it.
+        Set to 0 to disable cooldown (not recommended).
+        
+        **Arguments**:
+        - `<seconds>` - The cooldown period in seconds (default: 60)
+        
+        **Examples**:
+        - `[p]nodms cooldown 60` - Set cooldown to 1 minute
+        - `[p]nodms cooldown 300` - Set cooldown to 5 minutes
+        - `[p]nodms cooldown 0` - Disable cooldown (messages sent every time)
+        """
+        if seconds < 0:
+            await ctx.send("Cooldown cannot be negative.")
+            return
+        
+        await self.config.cooldown.set(seconds)
+        self.cache.update(**dict(cooldown=seconds))
+        
+        if seconds == 0:
+            await ctx.send("⚠️ Cooldown disabled. The bot will respond to every DM message/command.")
+        else:
+            await ctx.send(f"✅ Cooldown set to {seconds} seconds.")
 
     @cast(commands.Group, _no_dms).group(name="message")
     async def _no_dms_message(self, _: commands.Context):
@@ -763,10 +824,11 @@ class NoDMs(commands.Cog):
         embed: discord.Embed = discord.Embed(
             title="NoDMs Settings",
             color=await ctx.embed_color(),
-            description="**Toggle**: {}\n**Type**: {}\n**Messages**: {}".format(
+            description="**Toggle**: {}\n**Type**: {}\n**Messages**: {}\n**Cooldown**: {} seconds".format(
                 "Enabled" if self.cache.toggle else "Disabled",
                 self.cache.type,
                 "Enabled" if self.cache.message.toggle else "Disabled",
+                self.cache.cooldown,
             ),
         )
         embed.add_field(
