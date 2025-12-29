@@ -17,14 +17,21 @@ class ThreadView(discord.ui.View):
         self.add_item(DeleteThreadButton())
 
     async def interaction_check(self, interaction: discord.Interaction[Red]) -> bool:
-        if not cast(discord.Guild, interaction.guild).me.guild_permissions.manage_threads:
+        # Check channel-specific permissions instead of guild-wide
+        channel = cast(discord.Thread, interaction.channel)
+        channel_perms = channel.permissions_for(cast(discord.Guild, interaction.guild).me)
+        
+        if not channel_perms.manage_threads:
             await cast(RedTree, interaction.client.tree)._send_from_interaction(
                 interaction, "I need the 'Manage Threads' permissions to do that!"
             )
             return False
-        if not cast(discord.Member, interaction.user).guild_permissions.manage_threads:
+        
+        # Check user's channel-specific permissions
+        user_perms = channel.permissions_for(cast(discord.Member, interaction.user))
+        if not user_perms.manage_threads:
             await cast(RedTree, interaction.client.tree)._send_from_interaction(
-                interaction, "You're not authozied to use this button!"
+                interaction, "You're not authorized to use this button!"
             )
             return False
         return True
@@ -44,14 +51,21 @@ class EditTitleModal(discord.ui.Modal):
         super().__init__(title="Edit Thread Title", timeout=None)
 
     async def interaction_check(self, interaction: discord.Interaction[Red]) -> bool:
-        if not cast(discord.Guild, interaction.guild).me.guild_permissions.manage_threads:
+        # Check channel-specific permissions instead of guild-wide
+        channel = cast(discord.Thread, interaction.channel)
+        channel_perms = channel.permissions_for(cast(discord.Guild, interaction.guild).me)
+        
+        if not channel_perms.manage_threads:
             await cast(RedTree, interaction.client.tree)._send_from_interaction(
                 interaction, "I need the 'Manage Threads' permissions to do that!"
             )
             return False
-        if not cast(discord.Member, interaction.user).guild_permissions.manage_threads:
+        
+        # Check user's channel-specific permissions
+        user_perms = channel.permissions_for(cast(discord.Member, interaction.user))
+        if not user_perms.manage_threads:
             await cast(RedTree, interaction.client.tree)._send_from_interaction(
-                interaction, "You're not authozied to use this button!"
+                interaction, "You're not authorized to use this button!"
             )
             return False
         return True

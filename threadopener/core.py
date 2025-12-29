@@ -178,10 +178,13 @@ class ThreadOpener(
             return
         if message.channel.id not in cast(List[int], config["channels"]):
             return
+        
+        # Check channel-specific permissions instead of guild-wide permissions
+        channel_perms = message.channel.permissions_for(message.guild.me)
         if (
-            not message.guild.me.guild_permissions.manage_threads
-            or not message.guild.me.guild_permissions.view_channel
-            or not message.guild.me.guild_permissions.create_public_threads
+            not channel_perms.manage_threads
+            or not channel_perms.view_channel
+            or not channel_perms.create_public_threads
         ):
             await self.config.guild(message.guild).toggle.set(False)
             await message.channel.send(
@@ -192,6 +195,7 @@ class ThreadOpener(
                 f"ThreadOpener has been disabled due to missing permissions in {message.guild.name}.",
             )
             return
+        
         bucket: Optional[commands.Cooldown] = self.spam_control.get_bucket(message)
         current: float = message.created_at.timestamp()
         retry_after: Optional[float] = bucket and bucket.update_rate_limit(current)
