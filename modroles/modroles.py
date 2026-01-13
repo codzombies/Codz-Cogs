@@ -20,7 +20,6 @@ from redbot.core.bot import Red
 from redbot.core.commands import GuildContext, NoParseOptional as Optional
 from redbot.core.config import Config
 from redbot.core.utils.chat_formatting import box
-from redbot.core.utils.mod import is_mod_or_superior
 
 from .converters import AssignableRoleConverter as AssignableRole
 
@@ -73,9 +72,7 @@ class ModRoles(commands.Cog):
                 " whose top role is lower than yours!"
             )
             return False
-        if await is_mod_or_superior(self.bot, member):
-            await ctx.send("You can't assign roles to member who is mod or higher.")
-            return False
+        # Removed the is_mod_or_superior check to allow role hierarchy management
         return True
 
     @commands.guild_only()
