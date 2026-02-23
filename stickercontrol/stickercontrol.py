@@ -14,7 +14,8 @@ class StickerControl(commands.Cog):
             "mode": "blacklist",  # "blacklist" or "whitelist"
             "channels": [],  # List of channel IDs
             "categories": [],  # List of category IDs
-            "enabled": False
+            "enabled": False,
+            "log_channel": None  # Channel ID to log deleted sticker events
         }
         
         self.config.register_guild(**default_guild)
@@ -159,7 +160,11 @@ class StickerControl(commands.Cog):
         )
         embed.add_field(name="Status", value=enabled, inline=True)
         embed.add_field(name="Mode", value=mode, inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+        log_channel_id = guild_config["log_channel"]
+        log_channel = ctx.guild.get_channel(log_channel_id) if log_channel_id else None
+        log_channel_text = log_channel.mention if log_channel else "Not set"
+        embed.add_field(name="Log Channel", value=log_channel_text, inline=True)
         
         channels_text = humanize_list(channel_mentions) if channel_mentions else "None"
         categories_text = humanize_list(category_names) if category_names else "None"
@@ -175,6 +180,20 @@ class StickerControl(commands.Cog):
         await self.config.guild(ctx.guild).channels.set([])
         await self.config.guild(ctx.guild).categories.set([])
         await ctx.send("✅ Cleared all channels and categories from the list")
+
+    @stickercontrol.command(name="logchannel")
+    async def set_log_channel(self, ctx, channel: discord.TextChannel = None):
+        """
+        Set or clear the channel where deleted sticker events are logged.
+
+        Leave `channel` blank to disable logging.
+        """
+        if channel is None:
+            await self.config.guild(ctx.guild).log_channel.set(None)
+            await ctx.send("✅ Log channel cleared. Sticker deletions will no longer be logged.")
+        else:
+            await self.config.guild(ctx.guild).log_channel.set(channel.id)
+            await ctx.send(f"✅ Sticker deletions will now be logged to {channel.mention}.")
     
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -207,6 +226,25 @@ class StickerControl(commands.Cog):
                     f"{message.author.mention}, stickers are not allowed in this channel.",
                     delete_after=5
                 )
+                # Log to the configured log channel if set
+                log_channel_id = guild_config["log_channel"]
+                if log_channel_id:
+                    log_channel = message.guild.get_channel(log_channel_id)
+                    if log_channel:
+                        sticker = message.stickers[0]
+                        embed = discord.Embed(
+                            title="🗑️ Sticker Deleted",
+                            color=await self.bot.get_embed_color(log_channel),
+                            timestamp=message.created_at
+                        )
+                        embed.set_author(
+                            name=str(message.author),
+                            icon_url=message.author.display_avatar.url
+                        )
+                        embed.add_field(name="User", value=message.author.mention, inline=True)
+                        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+                        embed.add_field(name="Sticker", value=sticker.name, inline=True)
+                        await log_channel.send(embed=embed)
             except discord.Forbidden:
                 pass  # Bot lacks permissions to delete
             except discord.HTTPException:
