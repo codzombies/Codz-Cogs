@@ -1,5 +1,5 @@
 {
-    "author": ["EternalllZM"],
+    "author": ["Eternalll"],
     "description": "Monitor and control Discord Rich Presence game invites in your server. Log invite activity, restrict invite usage to specific channels, and manage who can send/receive game invites.",
     "install_msg": "Thanks for installing GameInviteControl! Use `[p]gameinvite` to get started. You'll need Manage Server permissions to configure it.",
     "short": "Monitor and manage Discord Rich Presence game invites",
