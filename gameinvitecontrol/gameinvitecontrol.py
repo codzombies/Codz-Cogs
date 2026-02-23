@@ -2,7 +2,6 @@ from redbot.core import commands, Config, checks
 from redbot.core.utils.chat_formatting import humanize_list
 import discord
 from typing import Literal, Optional
-import datetime
 
 
 class GameInviteControl(commands.Cog):
@@ -413,111 +412,97 @@ class GameInviteControl(commands.Cog):
         await ctx.send("✅ Cleared all channels and categories from the list.")
 
     # ------------------------------------------------------------------ #
-    #  Presence listener                                                   #
+    #  Message listener — catches actual game invite messages              #
     # ------------------------------------------------------------------ #
 
     @commands.Cog.listener()
-    async def on_presence_update(
-        self, before: discord.Member, after: discord.Member
-    ):
+    async def on_message(self, message: discord.Message):
         """
-        Fires whenever a member's presence changes.
+        Fires on every message. We filter down to Discord's native game-invite
+        messages, which are regular messages that carry a ``message.activity``
+        dict (with a ``type`` of 1=Join, 2=Spectate, 3=Listen, 5=JoinRequest)
+        and a ``message.application`` object identifying the game.
 
-        We look for a Rich Presence activity that has **both** a party *and* a
-        join secret — that is the exact configuration required for Discord's
-        native game-invite buttons to appear (per the Managing Game Invites docs).
+        This is the same mechanism StickerControl uses for stickers — catch
+        the message as it arrives, check the channel against the blacklist/
+        whitelist, delete if blocked, and log either way.
         """
-        if after.bot:
+        # Ignore DMs, bots, and messages with no activity payload
+        if not message.guild:
             return
-        if after.guild is None:
+        if message.author.bot:
+            return
+        if not message.activity:
+            # message.activity is the dict Discord attaches to game-invite messages
             return
 
-        cfg = await self.config.guild(after.guild).all()
+        cfg = await self.config.guild(message.guild).all()
         if not cfg["enabled"]:
             return
 
-        # Find the new invite-capable activity (must have party + secrets)
-        invite_activity = self._find_invite_activity(after.activities)
-        if invite_activity is None:
+        # Bypass for users with Manage Messages (same pattern as StickerControl)
+        if message.author.guild_permissions.manage_messages:
             return
 
-        # Optional game filter
+        # Optional game filter — message.application is a PartialApplication-like
+        # object; fall back to message.application.id if present
         if cfg["tracked_games"]:
-            app_id = str(getattr(invite_activity, "application_id", "") or "")
+            app = getattr(message, "application", None)
+            app_id = str(app.id) if app and app.id else ""
             if app_id not in cfg["tracked_games"]:
                 return
 
-        # Build human-readable info
-        game_name = invite_activity.name or "Unknown Game"
-        party_info = self._format_party(invite_activity)
+        # Gather info for logging regardless of block decision
+        app = getattr(message, "application", None)
+        game_name = (app.name if app and app.name else None) or "Unknown Game"
+        activity_type = message.activity.get("type", 0)
+        # Discord activity types: 1=Join, 2=Spectate, 3=Listen, 5=JoinRequest
+        type_labels = {1: "Join", 2: "Spectate", 3: "Listen", 5: "Join Request"}
+        invite_type = type_labels.get(activity_type, f"Type {activity_type}")
         timestamp = discord.utils.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-        # Store in rolling log
+        # Log the event
+        app_id_str = str(app.id) if app and app.id else ""
         await self._append_log(
-            after.guild,
+            message.guild,
             cfg,
             {
-                "user_id": after.id,
+                "user_id": message.author.id,
                 "game": game_name,
-                "party": party_info,
+                "party": invite_type,
                 "timestamp": timestamp,
-                "application_id": str(
-                    getattr(invite_activity, "application_id", "") or ""
-                ),
+                "application_id": app_id_str,
+                "channel_id": message.channel.id,
             },
         )
 
-        # Post to log channel if configured
+        # Post to staff log channel if configured
         log_channel_id = cfg["log_channel"]
         if log_channel_id:
-            log_channel = after.guild.get_channel(log_channel_id)
-            if log_channel:
-                await self._post_log_embed(
-                    log_channel, after, invite_activity, party_info, timestamp
+            log_channel = message.guild.get_channel(log_channel_id)
+            if log_channel and log_channel.id != message.channel.id:
+                await self._post_log_embed_from_message(
+                    log_channel, message, game_name, invite_type, timestamp
                 )
 
-        # Handle channel-based restrictions
-        # We scan text channels the member can see for any messages that
-        # Discord auto-generated as a game invite (type == CALL or activity invite).
-        # Since discord.py doesn't expose invite-embed messages directly via presence,
-        # we check all visible channels against the blacklist/whitelist and,
-        # if delete_invites is on, we scan recent messages for the activity invite type.
-        if cfg["delete_invites"]:
-            await self._maybe_delete_invite_messages(after, invite_activity, cfg)
+        # Check whether this channel is blocked
+        should_block = self._should_block_in_channel(message.channel, cfg)
+
+        if should_block and cfg["delete_invites"]:
+            try:
+                await message.delete()
+                await message.channel.send(
+                    f"{message.author.mention}, game invites are not allowed in this channel.",
+                    delete_after=5,
+                )
+            except discord.Forbidden:
+                pass
+            except discord.HTTPException:
+                pass
 
     # ------------------------------------------------------------------ #
     #  Internal helpers                                                    #
     # ------------------------------------------------------------------ #
-
-    def _find_invite_activity(self, activities):
-        """
-        Return the first Activity that qualifies as invite-capable.
-
-        According to the Discord docs an activity enables game invites when it has:
-          - a party (with party ID, current size, max size)
-          - a join secret (ActivitySecrets.join)
-          - supported platforms
-
-        discord.py exposes these on `discord.Activity` objects.
-        """
-        for activity in activities:
-            if not isinstance(activity, discord.Activity):
-                continue
-            # party must exist and have a join field
-            if activity.party and activity.party.get("id"):
-                # The join secret is exposed as activity.secrets (dict)
-                secrets = getattr(activity, "secrets", {}) or {}
-                if secrets.get("join"):
-                    return activity
-        return None
-
-    def _format_party(self, activity: discord.Activity) -> str:
-        """Return a 'current/max' party string, or empty string if unavailable."""
-        party = activity.party or {}
-        size = party.get("size")
-        if size and len(size) == 2:
-            return f"{size[0]}/{size[1]} players"
-        return ""
 
     async def _append_log(self, guild: discord.Guild, cfg: dict, entry: dict):
         """Append an entry to the guild's rolling invite log."""
@@ -527,84 +512,37 @@ class GameInviteControl(commands.Cog):
             if len(log) > max_size:
                 del log[max_size:]
 
-    async def _post_log_embed(
+    async def _post_log_embed_from_message(
         self,
-        channel: discord.TextChannel,
-        member: discord.Member,
-        activity: discord.Activity,
-        party_info: str,
+        log_channel: discord.TextChannel,
+        message: discord.Message,
+        game_name: str,
+        invite_type: str,
         timestamp: str,
     ):
-        """Post a Rich Presence invite-detected embed to the log channel."""
+        """Post a game-invite-detected embed to the staff log channel."""
+        source_channel = message.channel
         embed = discord.Embed(
-            title="🎮 Game Invite Available",
+            title="🎮 Game Invite Detected",
             description=(
-                f"{member.mention} is now invitable to **{activity.name}**."
+                f"{message.author.mention} sent a **{invite_type}** invite "
+                f"for **{game_name}** in {source_channel.mention}."
             ),
             color=discord.Color.blurple(),
             timestamp=discord.utils.utcnow(),
         )
         embed.set_author(
-            name=str(member), icon_url=member.display_avatar.url
+            name=str(message.author),
+            icon_url=message.author.display_avatar.url,
         )
-        if party_info:
-            embed.add_field(name="Party", value=party_info, inline=True)
-
-        state = activity.state or ""
-        details = activity.details or ""
-        if state:
-            embed.add_field(name="State", value=state, inline=True)
-        if details:
-            embed.add_field(name="Details", value=details, inline=True)
-
-        app_id = getattr(activity, "application_id", None)
-        if app_id:
-            embed.set_footer(text=f"Application ID: {app_id}")
+        app = getattr(message, "application", None)
+        if app and app.id:
+            embed.set_footer(text=f"Application ID: {app.id}")
 
         try:
-            await channel.send(embed=embed)
+            await log_channel.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
             pass
-
-    async def _maybe_delete_invite_messages(
-        self,
-        member: discord.Member,
-        activity: discord.Activity,
-        cfg: dict,
-    ):
-        """
-        Scan recent messages in channels where invites are *blocked* and delete
-        any Discord-native game-invite messages sent by this member.
-
-        Discord sends game invites as messages with type `MessageType.call`
-        or as activity-invite messages. We look for messages from the member
-        that reference the same application_id.
-        """
-        for channel in member.guild.text_channels:
-            if not self._should_block_in_channel(channel, cfg):
-                continue
-            if not channel.permissions_for(member.guild.me).manage_messages:
-                continue
-            if not channel.permissions_for(member.guild.me).read_message_history:
-                continue
-            try:
-                async for message in channel.history(limit=20):
-                    if message.author.id != member.id:
-                        continue
-                    # Discord's activity invite messages have an Activity on them
-                    if (
-                        message.activity
-                        and str(getattr(activity, "application_id", ""))
-                        and message.activity.get("application_id")
-                        == str(getattr(activity, "application_id", ""))
-                    ):
-                        await message.delete()
-                        warning = await channel.send(
-                            f"{member.mention}, game invites are not allowed in this channel.",
-                            delete_after=5,
-                        )
-            except (discord.Forbidden, discord.HTTPException):
-                pass
 
     def _should_block_in_channel(
         self, channel: discord.TextChannel, cfg: dict
