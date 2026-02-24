@@ -1,4 +1,4 @@
-Mostly cogs that give more control over disabling/enabling features that cannot be controled within Discord in a native manner.
+Mostly cogs that give admins more control over disabling/enabling features that cannot be controlled natively within Discord.
 
 # Publicly Listed Cogs
 
