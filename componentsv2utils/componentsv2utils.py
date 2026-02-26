@@ -460,7 +460,7 @@ class ComponentsV2Utils(commands.Cog):
 
     # File (YAML or JSON attachment)
 
-    @cv2.command(name="file", aliases=["fromfile"])
+    @cv2.command(name="file", aliases=["fromfile", "yamlfile", "fromyamlfile", "jsonfile", "fromjsonfile"])
     async def cv2_file(
         self,
         ctx: commands.Context,
@@ -470,6 +470,8 @@ class ComponentsV2Utils(commands.Cog):
 
         Attach a .yaml, .yml, or .json file to your message.
         Optionally provide a channel or message link to redirect the output.
+
+        Aliases: yamlfile, fromyamlfile, jsonfile, fromjsonfile
         """
         if not ctx.message.attachments:
             return await ctx.send(
