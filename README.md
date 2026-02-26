@@ -5,8 +5,11 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 ## Check
 A successor to Dav-Cogs `check` cog that imports defender message log (& count) functionality, supports running against users that left the server, displays modlog cases using `bettermodlog` code, allows 3 check runs simultaneously per guild, and runs async.
 
+## ComponentsV2Utils
+Send rich Discord Components V2 messages from YAML or JSON.
+
 ## GameInviteControl
-Allow or block rich presence game invites in configured channels or categories.
+Monitor and control Discord Rich Presence game invites in your server. Log invite activity, restrict invite usage to specific channels, and manage who can send/receive game invites.
 
 ## StickerControl
-Allow or block using stickers in configured channels or categories.
+Control where users can post Discord stickers using blacklist/whitelist systems.

@@ -1,5 +1,5 @@
 {
-    "author": ["EternalllZM"],
+    "author": ["EternalllZM", "AAA3A"],
     "name": "ComponentsV2Utils",
     "short": "Send rich Discord Components V2 messages from YAML or JSON.",
     "description": "A Red-DiscordBot cog to send, store, and post Discord Components V2 layout messages. Supports TextDisplay (markdown), Separators, Sections (with thumbnail/button accessories), MediaGalleries, and Containers — defined in clean YAML or JSON. No classic embeds required.",
