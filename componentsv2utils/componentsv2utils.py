@@ -14,48 +14,46 @@ Requires: discord.py >= 2.6, Red-DiscordBot >= 3.5.0
 
 from __future__ import annotations
 
-import io
 import json
 import typing
 
 import discord
 import yaml
-from redbot.core import commands, Config, app_commands
+from redbot.core import commands, Config
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import text_to_file
 
 # ---------------------------------------------------------------------------
-# YAML schema reference (inline docstring shown to users via [p]cv2 help)
+# YAML schema reference
 # ---------------------------------------------------------------------------
 YAML_SCHEMA_HELP = """
 **Components V2 YAML / JSON schema**
 
 Top-level keys:
-  `components` *(list, required)* – ordered list of component objects.
-  `accent_color` *(str, optional)* – hex colour for the outermost Container
-    border (e.g. `#5865F2`). Omit for no border / theme-blended look.
+  `components` *(list, required)* - ordered list of component objects.
+  `accent_color` *(str, optional)* - hex colour wrapping everything in a
+    tinted Container border (e.g. `#5865F2`). Omit for no border.
 
 Each component object has a `type` key plus type-specific fields:
 
-**`text`** – TextDisplay (markdown)
+**`text`** - TextDisplay (full Discord Markdown)
 ```yaml
 - type: text
   content: "## Hello\\nThis is **bold** and *italic*."
 ```
 
-**`separator`** – horizontal divider / spacing
+**`separator`** - horizontal divider / spacing
 ```yaml
 - type: separator
-  visible: true       # default true  – show the line
+  visible: true       # default true  - show the line
   spacing: small      # small | large  (default small)
 ```
 
-**`section`** – text block with an optional accessory (thumbnail or link button)
+**`section`** - text block with an optional accessory (thumbnail or link button)
 ```yaml
 - type: section
   title: "## My Section"
   description: "Some description here."
-  # accessory is optional:
   accessory:
     type: thumbnail
     url: "https://example.com/image.png"
@@ -66,27 +64,27 @@ Each component object has a `type` key plus type-specific fields:
     url: "https://example.com"
 ```
 
-**`gallery`** – MediaGallery of up to 10 images/videos
+**`gallery`** - MediaGallery of up to 10 images/videos
 ```yaml
 - type: gallery
   items:
     - url: "https://example.com/image1.png"
-      description: "Alt text"   # optional
-      spoiler: false             # optional
+      description: "Alt text"
+      spoiler: false
     - url: "https://example.com/image2.gif"
 ```
 
-**`container`** – group sub-components with an optional accent colour
+**`container`** - group sub-components with an optional accent colour
 ```yaml
 - type: container
-  accent_color: "#5865F2"   # optional
+  accent_color: "#5865F2"
   components:
     - type: text
       content: "Inside the container"
     - type: separator
 ```
 
-**Full example (YAML)**
+**Full YAML example**
 ```yaml
 accent_color: "#5865F2"
 components:
@@ -109,7 +107,41 @@ components:
 
 
 # ---------------------------------------------------------------------------
-# Helper: parse hex colour string → discord.Color (or None)
+# Converter: channel mention/ID  OR  message link  -> union target
+# ---------------------------------------------------------------------------
+class ChannelOrMessageConverter(commands.Converter):
+    """
+    Accepts either:
+      - a channel mention / channel ID
+      - a message link (https://discord.com/channels/...)
+    Returns the resolved object, or raises BadArgument.
+    """
+
+    async def convert(
+        self, ctx: commands.Context, argument: str
+    ) -> typing.Union[discord.abc.Messageable, discord.Message]:
+        # Try message link / ID first
+        try:
+            return await commands.MessageConverter().convert(ctx, argument)
+        except commands.BadArgument:
+            pass
+        # Try TextChannel
+        try:
+            return await commands.TextChannelConverter().convert(ctx, argument)
+        except commands.BadArgument:
+            pass
+        # Try Thread
+        try:
+            return await commands.ThreadConverter().convert(ctx, argument)
+        except commands.BadArgument:
+            pass
+        raise commands.BadArgument(
+            f"Could not resolve `{argument}` as a channel or message link."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Helper: parse hex colour string -> discord.Color (or None)
 # ---------------------------------------------------------------------------
 def _parse_color(value: typing.Optional[str]) -> typing.Optional[discord.Color]:
     if not value:
@@ -122,7 +154,7 @@ def _parse_color(value: typing.Optional[str]) -> typing.Optional[discord.Color]:
 
 
 # ---------------------------------------------------------------------------
-# Core builder: dict → list[discord.ui.* components]
+# Core builder: dict -> discord.ui.LayoutView
 # ---------------------------------------------------------------------------
 class BuildError(Exception):
     """Raised when the user's YAML/JSON has a structural problem."""
@@ -130,29 +162,24 @@ class BuildError(Exception):
 
 def _build_accessory(
     acc: dict,
-) -> typing.Union[discord.ui.Thumbnail, discord.ui.Button, None]:
+) -> typing.Union[discord.ui.Thumbnail, discord.ui.Button]:
     """Build a Section accessory (Thumbnail or link Button)."""
-    if acc is None:
-        return None
     atype = str(acc.get("type", "")).lower()
     if atype == "thumbnail":
         url = acc.get("url")
         if not url:
             raise BuildError("`accessory.url` is required for a thumbnail accessory.")
-        description = acc.get("description")
-        spoiler = bool(acc.get("spoiler", False))
         return discord.ui.Thumbnail(
             media=url,
-            description=description,
-            spoiler=spoiler,
+            description=acc.get("description"),
+            spoiler=bool(acc.get("spoiler", False)),
         )
     elif atype == "button":
-        label = acc.get("label", "Link")
         url = acc.get("url")
         if not url:
             raise BuildError("`accessory.url` is required for a button accessory.")
         return discord.ui.Button(
-            label=label,
+            label=acc.get("label", "Link"),
             url=url,
             style=discord.ButtonStyle.link,
         )
@@ -165,17 +192,19 @@ def _build_accessory(
 def _build_component(comp: dict) -> discord.ui.Item:
     """Recursively build a single Component V2 item from a dict."""
     if not isinstance(comp, dict):
-        raise BuildError(f"Each component must be a mapping/dict, got `{type(comp).__name__}`.")
+        raise BuildError(
+            f"Each component must be a mapping/dict, got `{type(comp).__name__}`."
+        )
     ctype = str(comp.get("type", "")).lower()
 
-    # ── TextDisplay ────────────────────────────────────────────────────────
+    # TextDisplay
     if ctype == "text":
         content = comp.get("content")
         if not content:
             raise BuildError("`text` component requires a `content` field.")
         return discord.ui.TextDisplay(content=str(content))
 
-    # ── Separator ──────────────────────────────────────────────────────────
+    # Separator
     elif ctype == "separator":
         visible = bool(comp.get("visible", True))
         spacing_raw = str(comp.get("spacing", "small")).lower()
@@ -186,25 +215,25 @@ def _build_component(comp: dict) -> discord.ui.Item:
         )
         return discord.ui.Separator(visible=visible, spacing=spacing)
 
-    # ── Section ────────────────────────────────────────────────────────────
+    # Section
     elif ctype == "section":
         title = comp.get("title", "")
         description = comp.get("description", "")
         if not title and not description:
-            raise BuildError("`section` component requires at least `title` or `description`.")
-        accessory_data = comp.get("accessory")
-        accessory = _build_accessory(accessory_data) if accessory_data else discord.utils.MISSING
+            raise BuildError(
+                "`section` component requires at least `title` or `description`."
+            )
         texts = []
         if title:
             texts.append(discord.ui.TextDisplay(content=str(title)))
         if description:
             texts.append(discord.ui.TextDisplay(content=str(description)))
-        kwargs = {}
-        if accessory is not discord.utils.MISSING:
-            kwargs["accessory"] = accessory
-        return discord.ui.Section(*texts, **kwargs)
+        accessory_data = comp.get("accessory")
+        if accessory_data:
+            return discord.ui.Section(*texts, accessory=_build_accessory(accessory_data))
+        return discord.ui.Section(*texts)
 
-    # ── MediaGallery ───────────────────────────────────────────────────────
+    # MediaGallery
     elif ctype == "gallery":
         items_data = comp.get("items", [])
         if not items_data:
@@ -225,17 +254,18 @@ def _build_component(comp: dict) -> discord.ui.Item:
             )
         return discord.ui.MediaGallery(*gallery_items)
 
-    # ── Container ──────────────────────────────────────────────────────────
+    # Container
     elif ctype == "container":
-        sub_components_data = comp.get("components", [])
-        if not sub_components_data:
-            raise BuildError("`container` component requires at least one item in `components`.")
-        sub_components = [_build_component(c) for c in sub_components_data]
+        sub_data = comp.get("components", [])
+        if not sub_data:
+            raise BuildError(
+                "`container` component requires at least one item in `components`."
+            )
+        sub_components = [_build_component(c) for c in sub_data]
         accent = _parse_color(comp.get("accent_color"))
-        kwargs = {}
         if accent is not None:
-            kwargs["accent_color"] = accent
-        return discord.ui.Container(*sub_components, **kwargs)
+            return discord.ui.Container(*sub_components, accent_color=accent)
+        return discord.ui.Container(*sub_components)
 
     else:
         raise BuildError(
@@ -249,26 +279,24 @@ def build_layout_view(data: dict) -> discord.ui.LayoutView:
     Parse the top-level data dict and return a ready-to-send LayoutView.
 
     Expected keys:
-        components   – list of component dicts (required)
-        accent_color – optional hex colour for a wrapping Container
+        components   - list of component dicts (required)
+        accent_color - optional hex colour wrapping everything in a Container
     """
     components_data = data.get("components")
     if not components_data or not isinstance(components_data, list):
-        raise BuildError("Your data must have a `components` list with at least one item.")
+        raise BuildError(
+            "Your data must have a `components` list with at least one item."
+        )
 
     built = [_build_component(c) for c in components_data]
 
-    # Optionally wrap everything in a single Container with accent colour
     accent = _parse_color(data.get("accent_color"))
     if accent is not None:
         top_level = [discord.ui.Container(*built, accent_color=accent)]
     else:
         top_level = built
 
-    class _View(discord.ui.LayoutView):
-        pass
-
-    view = _View()
+    view = discord.ui.LayoutView()
     for item in top_level:
         view.add_item(item)
     return view
@@ -297,6 +325,14 @@ def _parse_json(text: str) -> dict:
     return result
 
 
+def _autoparse(text: str) -> dict:
+    """Try YAML first (superset of JSON), fall back to strict JSON."""
+    try:
+        return _parse_yaml(text)
+    except BuildError:
+        return _parse_json(text)
+
+
 # ---------------------------------------------------------------------------
 # The Cog
 # ---------------------------------------------------------------------------
@@ -305,7 +341,7 @@ class ComponentsV2Utils(commands.Cog):
     Send rich Discord Components V2 layout messages from YAML or JSON.
 
     Supports TextDisplay (markdown), Separators, Sections, MediaGalleries,
-    and Containers — no classic embeds required.
+    and Containers - no classic embeds required.
     """
 
     def __init__(self, bot: Red) -> None:
@@ -318,7 +354,7 @@ class ComponentsV2Utils(commands.Cog):
         )
         self.config.register_guild(stored={})
 
-    # ── Internal send helper ───────────────────────────────────────────────
+    # Internal send helper
 
     async def _send_or_edit(
         self,
@@ -335,17 +371,19 @@ class ComponentsV2Utils(commands.Cog):
                 await channel.send(view=view)
         except discord.HTTPException as exc:
             await ctx.send(
-                f"❌ **Discord returned an error while sending:**\n```\n{exc}\n```",
+                f":x: **Discord returned an error while sending:**\n```\n{exc}\n```",
                 ephemeral=True,
             )
 
-    # ── Command group ──────────────────────────────────────────────────────
+    # Command group
+    # NOTE: using commands.group (not hybrid_group) so subcommands that accept
+    # ChannelOrMessageConverter don't trip discord.py's app_commands Union
+    # channel-type restriction.
 
     @commands.guild_only()
     @commands.mod_or_permissions(manage_messages=True)
     @commands.bot_has_permissions(send_messages=True)
-    @commands.hybrid_group(name="cv2", aliases=["componentsv2"], invoke_without_command=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @commands.group(name="cv2", aliases=["componentsv2"], invoke_without_command=True)
     async def cv2(self, ctx: commands.Context) -> None:
         """Components V2 message sender.
 
@@ -354,37 +392,35 @@ class ComponentsV2Utils(commands.Cog):
         """
         await ctx.send_help()
 
-    # ── Schema reference ───────────────────────────────────────────────────
+    # Schema reference
 
     @cv2.command(name="schema", aliases=["help", "reference"])
     async def cv2_schema(self, ctx: commands.Context) -> None:
         """Display the YAML/JSON schema for building Components V2 messages."""
-        # Split into pages if needed (Discord message limit)
         if len(YAML_SCHEMA_HELP) <= 2000:
             await ctx.send(YAML_SCHEMA_HELP)
         else:
-            # Send as a file for safety
             await ctx.send(
                 "Here is the full schema reference:",
                 file=text_to_file(text=YAML_SCHEMA_HELP, filename="cv2_schema.md"),
             )
 
-    # ── YAML ───────────────────────────────────────────────────────────────
+    # YAML
 
     @cv2.command(name="yaml", aliases=["fromyaml"])
     async def cv2_yaml(
         self,
         ctx: commands.Context,
-        channel_or_message: typing.Optional[
-            typing.Union[discord.TextChannel, discord.Thread, discord.Message]
-        ] = None,
+        channel_or_message: typing.Optional[ChannelOrMessageConverter] = None,
         *,
         data: str,
     ) -> None:
         """Send a Components V2 message from inline YAML.
 
-        **Example:**
-        ```
+        Optionally provide a channel mention/ID or message link as the first
+        argument to send to a different channel or edit an existing message.
+
+        Example:
         [p]cv2 yaml
         components:
           - type: text
@@ -392,93 +428,76 @@ class ComponentsV2Utils(commands.Cog):
           - type: separator
           - type: text
             content: "This is a Components V2 message!"
-        ```
-
-        Optionally provide a channel or message link as the first argument
-        to send to a different channel or edit an existing message.
         """
         try:
-            parsed = _parse_yaml(data)
-            view = build_layout_view(parsed)
+            view = build_layout_view(_parse_yaml(data))
         except BuildError as exc:
-            return await ctx.send(f"❌ **Build error:** {exc}", ephemeral=True)
+            return await ctx.send(f":x: **Build error:** {exc}", ephemeral=True)
+        await self._send_or_edit(ctx, view, channel_or_message)
 
-        target = channel_or_message
-        await self._send_or_edit(ctx, view, target)
-
-    # ── JSON ───────────────────────────────────────────────────────────────
+    # JSON
 
     @cv2.command(name="json", aliases=["fromjson"])
     async def cv2_json(
         self,
         ctx: commands.Context,
-        channel_or_message: typing.Optional[
-            typing.Union[discord.TextChannel, discord.Thread, discord.Message]
-        ] = None,
+        channel_or_message: typing.Optional[ChannelOrMessageConverter] = None,
         *,
         data: str,
     ) -> None:
         """Send a Components V2 message from inline JSON.
 
-        **Example:**
-        ```
-        [p]cv2 json {"components": [{"type": "text", "content": "Hello!"}]}
-        ```
+        Optionally provide a channel mention/ID or message link as the first
+        argument to send to a different channel or edit an existing message.
 
-        Optionally provide a channel or message link as the first argument
-        to send to a different channel or edit an existing message.
+        Example: [p]cv2 json {"components": [{"type": "text", "content": "Hello!"}]}
         """
         try:
-            parsed = _parse_json(data)
-            view = build_layout_view(parsed)
+            view = build_layout_view(_parse_json(data))
         except BuildError as exc:
-            return await ctx.send(f"❌ **Build error:** {exc}", ephemeral=True)
+            return await ctx.send(f":x: **Build error:** {exc}", ephemeral=True)
+        await self._send_or_edit(ctx, view, channel_or_message)
 
-        target = channel_or_message
-        await self._send_or_edit(ctx, view, target)
-
-    # ── File (YAML or JSON attachment) ─────────────────────────────────────
+    # File (YAML or JSON attachment)
 
     @cv2.command(name="file", aliases=["fromfile"])
     async def cv2_file(
         self,
         ctx: commands.Context,
-        channel_or_message: typing.Optional[
-            typing.Union[discord.TextChannel, discord.Thread, discord.Message]
-        ] = None,
+        channel_or_message: typing.Optional[ChannelOrMessageConverter] = None,
     ) -> None:
         """Send a Components V2 message from an uploaded YAML or JSON file.
 
-        Attach a `.yaml`, `.yml`, or `.json` file to your message.
+        Attach a .yaml, .yml, or .json file to your message.
+        Optionally provide a channel or message link to redirect the output.
         """
         if not ctx.message.attachments:
             return await ctx.send(
-                "❌ Please attach a `.yaml`, `.yml`, or `.json` file.", ephemeral=True
+                ":x: Please attach a `.yaml`, `.yml`, or `.json` file.", ephemeral=True
             )
 
         attachment = ctx.message.attachments[0]
         ext = attachment.filename.rsplit(".", 1)[-1].lower()
         if ext not in ("yaml", "yml", "json", "txt"):
             return await ctx.send(
-                "❌ Unsupported file type. Please upload a `.yaml`, `.yml`, or `.json` file.",
+                ":x: Unsupported file type. Please upload a `.yaml`, `.yml`, or `.json` file.",
                 ephemeral=True,
             )
 
         try:
             raw = (await attachment.read()).decode("utf-8")
         except (UnicodeDecodeError, discord.HTTPException) as exc:
-            return await ctx.send(f"❌ Could not read attachment: {exc}", ephemeral=True)
+            return await ctx.send(f":x: Could not read attachment: {exc}", ephemeral=True)
 
         try:
             parsed = _parse_yaml(raw) if ext in ("yaml", "yml", "txt") else _parse_json(raw)
             view = build_layout_view(parsed)
         except BuildError as exc:
-            return await ctx.send(f"❌ **Build error:** {exc}", ephemeral=True)
+            return await ctx.send(f":x: **Build error:** {exc}", ephemeral=True)
 
-        target = channel_or_message
-        await self._send_or_edit(ctx, view, target)
+        await self._send_or_edit(ctx, view, channel_or_message)
 
-    # ── Store ──────────────────────────────────────────────────────────────
+    # Store
 
     @commands.mod_or_permissions(manage_guild=True)
     @cv2.command(name="store")
@@ -493,42 +512,37 @@ class ComponentsV2Utils(commands.Cog):
 
         Put the name in quotes if it contains spaces.
 
-        **Example (inline YAML):**
-        ```
+        Example (inline YAML):
         [p]cv2 store "my-announcement"
         components:
           - type: text
             content: "## Big news!"
-        ```
         """
         if data is None and ctx.message.attachments:
-            # Try reading from attachment
             attachment = ctx.message.attachments[0]
             ext = attachment.filename.rsplit(".", 1)[-1].lower()
             try:
                 data = (await attachment.read()).decode("utf-8")
             except (UnicodeDecodeError, discord.HTTPException) as exc:
-                return await ctx.send(f"❌ Could not read attachment: {exc}", ephemeral=True)
-            is_yaml = ext in ("yaml", "yml", "txt")
+                return await ctx.send(f":x: Could not read attachment: {exc}", ephemeral=True)
+            parse_fn = _parse_yaml if ext in ("yaml", "yml", "txt") else _parse_json
         elif data is not None:
-            # Detect format: try YAML first (it's a superset of JSON)
-            is_yaml = True
+            parse_fn = _autoparse
         else:
             return await ctx.send(
-                "❌ Provide YAML/JSON inline or attach a file.", ephemeral=True
+                ":x: Provide YAML/JSON inline or attach a file.", ephemeral=True
             )
 
-        # Validate by building
         try:
-            parsed = _parse_yaml(data) if is_yaml else _parse_json(data)
-            build_layout_view(parsed)  # validation only
+            parsed = parse_fn(data)
+            build_layout_view(parsed)  # validate only
         except BuildError as exc:
-            return await ctx.send(f"❌ **Build error:** {exc}", ephemeral=True)
+            return await ctx.send(f":x: **Build error:** {exc}", ephemeral=True)
 
         async with self.config.guild(ctx.guild).stored() as stored:
             if len(stored) >= 100 and name not in stored:
                 return await ctx.send(
-                    "❌ Reached the 100-layout limit. Remove one with `[p]cv2 unstore` first.",
+                    ":x: Reached the 100-layout limit. Remove one with `[p]cv2 unstore` first.",
                     ephemeral=True,
                 )
             stored[name] = {
@@ -537,9 +551,9 @@ class ComponentsV2Utils(commands.Cog):
                 "uses": stored.get(name, {}).get("uses", 0),
             }
 
-        await ctx.send(f"✅ Stored layout `{name}`.")
+        await ctx.send(f":white_check_mark: Stored layout `{name}`.")
 
-    # ── Unstore ────────────────────────────────────────────────────────────
+    # Unstore
 
     @commands.mod_or_permissions(manage_guild=True)
     @cv2.command(name="unstore", aliases=["delete", "remove"])
@@ -547,11 +561,11 @@ class ComponentsV2Utils(commands.Cog):
         """Remove a stored Components V2 layout."""
         async with self.config.guild(ctx.guild).stored() as stored:
             if name not in stored:
-                return await ctx.send(f"❌ No stored layout named `{name}`.", ephemeral=True)
+                return await ctx.send(f":x: No stored layout named `{name}`.", ephemeral=True)
             del stored[name]
-        await ctx.send(f"✅ Removed stored layout `{name}`.")
+        await ctx.send(f":white_check_mark: Removed stored layout `{name}`.")
 
-    # ── List stored ────────────────────────────────────────────────────────
+    # List stored
 
     @cv2.command(name="list", aliases=["stored"])
     async def cv2_list(self, ctx: commands.Context) -> None:
@@ -560,47 +574,49 @@ class ComponentsV2Utils(commands.Cog):
         if not stored:
             return await ctx.send("No layouts stored for this server yet.")
 
-        lines = []
-        for name, meta in stored.items():
-            lines.append(f"• `{name}` — used {meta.get('uses', 0)}×")
-
+        lines = "\n".join(
+            f"- `{name}` - used {meta.get('uses', 0)}x"
+            for name, meta in stored.items()
+        )
         view = discord.ui.LayoutView()
         view.add_item(
             discord.ui.Container(
-                discord.ui.TextDisplay(content="## Stored Layouts\n" + "\n".join(lines)),
+                discord.ui.TextDisplay(content=f"## Stored Layouts\n{lines}"),
                 accent_color=discord.Color.blurple(),
             )
         )
         await ctx.send(view=view)
 
-    # ── Post stored ────────────────────────────────────────────────────────
+    # Post stored
 
     @cv2.command(name="post", aliases=["send"])
     async def cv2_post(
         self,
         ctx: commands.Context,
-        channel_or_message: typing.Optional[
-            typing.Union[discord.TextChannel, discord.Thread, discord.Message]
-        ] = None,
+        channel_or_message: typing.Optional[ChannelOrMessageConverter] = None,
         *,
         name: str,
     ) -> None:
-        """Post a stored Components V2 layout by name."""
+        """Post a stored Components V2 layout by name.
+
+        Optionally provide a channel or message link as the first argument.
+        """
         async with self.config.guild(ctx.guild).stored() as stored:
             if name not in stored:
-                return await ctx.send(f"❌ No stored layout named `{name}`.", ephemeral=True)
+                return await ctx.send(f":x: No stored layout named `{name}`.", ephemeral=True)
             entry = stored[name]
             entry["uses"] = entry.get("uses", 0) + 1
 
         try:
             view = build_layout_view(entry["data"])
         except BuildError as exc:
-            return await ctx.send(f"❌ **Build error in stored layout:** {exc}", ephemeral=True)
+            return await ctx.send(
+                f":x: **Build error in stored layout:** {exc}", ephemeral=True
+            )
 
-        target = channel_or_message
-        await self._send_or_edit(ctx, view, target)
+        await self._send_or_edit(ctx, view, channel_or_message)
 
-    # ── Download stored ────────────────────────────────────────────────────
+    # Download stored
 
     @commands.mod_or_permissions(manage_guild=True)
     @cv2.command(name="download")
@@ -608,15 +624,14 @@ class ComponentsV2Utils(commands.Cog):
         """Download a stored layout as a YAML file."""
         stored = await self.config.guild(ctx.guild).stored()
         if name not in stored:
-            return await ctx.send(f"❌ No stored layout named `{name}`.", ephemeral=True)
-        data = stored[name]["data"]
-        yaml_text = yaml.dump(data, allow_unicode=True, sort_keys=False)
+            return await ctx.send(f":x: No stored layout named `{name}`.", ephemeral=True)
+        yaml_text = yaml.dump(stored[name]["data"], allow_unicode=True, sort_keys=False)
         await ctx.send(
             f"Here is the YAML for `{name}`:",
             file=text_to_file(text=yaml_text, filename=f"{name}.yaml"),
         )
 
-    # ── Info stored ────────────────────────────────────────────────────────
+    # Info stored
 
     @commands.mod_or_permissions(manage_guild=True)
     @cv2.command(name="info")
@@ -624,21 +639,18 @@ class ComponentsV2Utils(commands.Cog):
         """Show info about a stored layout."""
         stored = await self.config.guild(ctx.guild).stored()
         if name not in stored:
-            return await ctx.send(f"❌ No stored layout named `{name}`.", ephemeral=True)
+            return await ctx.send(f":x: No stored layout named `{name}`.", ephemeral=True)
         meta = stored[name]
-        author_id = meta.get("author", 0)
-        uses = meta.get("uses", 0)
-        num_components = len(meta.get("data", {}).get("components", []))
-
         view = discord.ui.LayoutView()
         view.add_item(
             discord.ui.Container(
                 discord.ui.TextDisplay(
                     content=(
                         f"## Layout: `{name}`\n"
-                        f"**Author:** <@{author_id}>\n"
-                        f"**Uses:** {uses}\n"
-                        f"**Top-level components:** {num_components}"
+                        f"**Author:** <@{meta.get('author', 0)}>\n"
+                        f"**Uses:** {meta.get('uses', 0)}\n"
+                        f"**Top-level components:** "
+                        f"{len(meta.get('data', {}).get('components', []))}"
                     )
                 ),
                 accent_color=discord.Color.blurple(),
