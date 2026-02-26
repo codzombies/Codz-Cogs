@@ -189,7 +189,7 @@ def _build_accessory(
         )
 
 
-def _build_component(comp: dict) -> discord.ui.Item:
+def _build_component(comp: dict, _depth: int = 0) -> discord.ui.Item:
     """Recursively build a single Component V2 item from a dict."""
     if not isinstance(comp, dict):
         raise BuildError(
@@ -267,7 +267,15 @@ def _build_component(comp: dict) -> discord.ui.Item:
             raise BuildError(
                 "`container` component requires at least one item in `components`."
             )
-        sub_components = [_build_component(c) for c in sub_data]
+        if _depth > 0:
+            raise BuildError(
+                "Discord does not allow nested Containers. "
+                "A `container` cannot be placed inside another `container` or inside a "
+                "message that already uses a root `accent_color` wrapper.\n"
+                "Remove the inner `container` and continue the flat component list, "
+                "or remove the root `accent_color` and use explicit top-level containers instead."
+            )
+        sub_components = [_build_component(c, _depth=_depth + 1) for c in sub_data]
         accent = _parse_color(comp.get("accent_color"))
         if accent is not None:
             return discord.ui.Container(*sub_components, accent_color=accent)
@@ -294,9 +302,12 @@ def build_layout_view(data: dict) -> discord.ui.LayoutView:
             "Your data must have a `components` list with at least one item."
         )
 
-    built = [_build_component(c) for c in components_data]
-
     accent = _parse_color(data.get("accent_color"))
+    # If accent_color is set, the root wraps everything in a Container (depth 0).
+    # Children are therefore at depth 1 and cannot themselves be Containers.
+    child_depth = 1 if accent else 0
+    built = [_build_component(c, _depth=child_depth) for c in components_data]
+
     if accent is not None:
         top_level = [discord.ui.Container(*built, accent_color=accent)]
     else:
@@ -410,6 +421,46 @@ class ComponentsV2Utils(commands.Cog):
                 "Here is the full schema reference:",
                 file=text_to_file(text=YAML_SCHEMA_HELP, filename="cv2_schema.md"),
             )
+
+
+    # Debug: dump raw JSON payload
+
+    @commands.is_owner()
+    @cv2.command(name="debug", aliases=["debugfile"])
+    async def cv2_debug(
+        self,
+        ctx: commands.Context,
+        channel_or_message: typing.Optional[ChannelOrMessageConverter] = None,
+    ) -> None:
+        """Dump the raw JSON payload that would be sent to Discord (owner only).
+
+        Attach a YAML or JSON file. The bot will reply with the serialized
+        component payload so you can inspect type numbers before sending.
+        """
+        if not ctx.message.attachments:
+            return await ctx.send(":x: Please attach a `.yaml` or `.json` file.", ephemeral=True)
+
+        attachment = ctx.message.attachments[0]
+        ext = attachment.filename.rsplit(".", 1)[-1].lower()
+        try:
+            raw = (await attachment.read()).decode("utf-8")
+        except (UnicodeDecodeError, discord.HTTPException) as exc:
+            return await ctx.send(f":x: Could not read attachment: {exc}", ephemeral=True)
+
+        try:
+            parsed = _parse_yaml(raw) if ext in ("yaml", "yml", "txt") else _parse_json(raw)
+            view = build_layout_view(parsed)
+        except BuildError as exc:
+            return await ctx.send(f":x: **Build error:** {exc}", ephemeral=True)
+
+        # Serialize the view the same way discord.py does internally
+        payload = [item.to_component().to_dict() for item in view._children]
+        json_text = json.dumps(payload, indent=2, ensure_ascii=False)
+
+        await ctx.send(
+            "**Raw component payload:**",
+            file=text_to_file(text=json_text, filename="payload.json"),
+        )
 
     # YAML
 
