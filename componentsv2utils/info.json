@@ -1,0 +1,22 @@
+{
+    "author": ["EternalllZM"],
+    "name": "ComponentsV2Utils",
+    "short": "Send rich Discord Components V2 messages from YAML or JSON.",
+    "description": "A Red-DiscordBot cog to send, store, and post Discord Components V2 layout messages. Supports TextDisplay (markdown), Separators, Sections (with thumbnail/button accessories), MediaGalleries, and Containers — defined in clean YAML or JSON. No classic embeds required.",
+    "tags": [
+        "components",
+        "layout",
+        "embed",
+        "yaml",
+        "json",
+        "text display",
+        "separator",
+        "section",
+        "media gallery",
+        "container"
+    ],
+    "requirements": ["PyYAML"],
+    "min_bot_version": "3.5.0",
+    "min_python_version": [3, 9, 0],
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users."
+}
