@@ -49,7 +49,7 @@ Each component object has a `type` key plus type-specific fields:
   spacing: small      # small | large  (default small)
 ```
 
-**`section`** - text block with an optional accessory (thumbnail or link button)
+**`section`** - text block with a required accessory (thumbnail or link button)
 ```yaml
 - type: section
   title: "## My Section"
@@ -231,7 +231,13 @@ def _build_component(comp: dict) -> discord.ui.Item:
         accessory_data = comp.get("accessory")
         if accessory_data:
             return discord.ui.Section(*texts, accessory=_build_accessory(accessory_data))
-        return discord.ui.Section(*texts)
+        # discord.py requires accessory as a keyword-only arg even though Discord
+        # docs call it optional. Raise a clear user-facing error rather than
+        # crashing with a confusing TypeError.
+        raise BuildError(
+            "`section` without an `accessory` is not supported by discord.py\n"
+            "Add an accessory (thumbnail or button) or use `type: text` instead."
+        )
 
     # MediaGallery
     elif ctype == "gallery":
