@@ -11,7 +11,6 @@
   "hidden": true,
   "disabled": false,
   "min_bot_version": "3.5.6",
-  "max_bot_version": "3.5.22",
   "min_python_version": [
     3,
     9,

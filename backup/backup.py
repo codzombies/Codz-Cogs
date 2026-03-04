@@ -8,7 +8,6 @@ import re
 from redbot.cogs.downloader import errors
 from redbot.cogs.downloader.converters import InstalledCog
 from redbot.core import commands
-from redbot.core.bot import Red
 from redbot.core.utils import chat_formatting as cf
 from tidegear import Cog
 from tidegear.utils import send_error
@@ -20,16 +19,14 @@ from tidegear.utils import send_error
 class Backup(Cog):
     """A utility to make reinstalling repositories and cogs after migrating the bot far easier."""
 
-    def __init__(self, bot: Red) -> None:
-        super().__init__(bot)
-
-    @commands.group(autohelp=True)
+    @commands.group(autohelp=True)  # pyright: ignore[reportArgumentType]
+    @commands.is_owner()
     async def backup(self, ctx: commands.Context) -> None:
         """Backup your installed cogs."""
-        _ = ctx
 
     @backup.command(name="export")
     @commands.has_permissions(administrator=True)
+    @commands.bot_has_permissions(attach_files=True)
     async def backup_export(self, ctx: commands.Context) -> None:
         """Export your installed repositories and cogs to a file."""
         downloader = ctx.bot.get_cog("Downloader")
@@ -71,6 +68,7 @@ class Backup(Cog):
 
     @backup.command(name="import")
     @commands.is_owner()
+    @commands.bot_has_permissions(attach_files=True)
     async def backup_import(self, ctx: commands.Context) -> None:
         """Import your installed repositories and cogs from an export file."""
         try:
@@ -112,7 +110,8 @@ class Backup(Cog):
                     continue
                 if re.match(r"^[a-zA-Z0-9_\-\.]+$", name) is None:
                     repo_e.append(
-                        f"Invalid repository name: {name}\nRepository names may only contain letters, numbers, underscores, hyphens, and dots."
+                        f"Invalid repository name: {name}\nRepository names may only contain "
+                        "letters, numbers, underscores, hyphens, and dots."
                     )
                     continue
 
@@ -189,8 +188,7 @@ class Backup(Cog):
                     else:
                         commit = None
 
-                    # If you're forking this cog, make sure to change these strings!
-                    if cog_name == "backup" and "cswimr/SeaCogs" in url:
+                    if cog_name == "backup" and "cswimr/seacogs" in url.lower():
                         continue
 
                     async with repository.checkout(commit, exit_to_rev=repository.branch):
