@@ -1,8 +1,8 @@
 {
     "author": [
-        "blizzardthewolf"
+        "blizzardthewolf", "Eternalll"
     ],
-    "install_msg": "Thank you for installing my cog, if you run into any issues or have any questions, you can find me in the Red servers or DM me @blizzthewolf. You are also free to open an issue on [my repository](https://git.purplepanda.cc/blizz/blizz-cogs)",
+    "install_msg": "Cog originally made by blizzthewolf. This is a re-upload to make it available on the index again and raise the ban limit. Please only make issues or PRs to this repository and not the original developer.",
     "name": "BannedCount",
     "disabled": false,
     "short": "Get the number of banned members in the server",
@@ -14,5 +14,5 @@
         "bancount"
     ],
     "min_bot_version": "3.5.0",
-    "hidden": true
+    "hidden": false
 }
