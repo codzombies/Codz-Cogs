@@ -2,6 +2,9 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 
 # Publicly Listed Cogs
 
+## BannedCount
+A successor to blizzthewolf's `bannedcount` cog that increases the ban list limit from 10,000 to 50,000.
+
 ## Check
 A successor to Dav-Cogs `check` cog that imports defender message log (& count) functionality, supports running against users that left the server, displays modlog cases using `bettermodlog` code, allows 3 check runs simultaneously per guild, and runs async.
 
