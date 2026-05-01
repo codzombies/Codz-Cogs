@@ -20,7 +20,7 @@ class Backup(Cog):
     """A utility to make reinstalling repositories and cogs after migrating the bot far easier."""
 
     @commands.group(autohelp=True)  # pyright: ignore[reportArgumentType]
-    @commands.is_owner()
+    @commands.has_permissions(administrator=True)
     async def backup(self, ctx: commands.Context) -> None:
         """Backup your installed cogs."""
 
