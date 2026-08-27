@@ -1,18 +1,37 @@
 import logging
+from string import Template
 from typing import Optional
 
 import discord
 from redbot.core import Config, checks, commands
 from redbot.core.bot import Red
+from redbot.core.utils.chat_formatting import box
 
 BaseCog = getattr(commands, "Cog", object)
+
+DEFAULT_MESSAGE = (
+    "$user_mention, your message was removed for exceeding the $line_limit-line limit "
+    "in $channel_mention. Please condense it into $line_limit line(s) or fewer and try again."
+)
+
+# Maps the $variable name users can use in a custom message to a short description,
+# shown by `[p]linelimit message variables`.
+MESSAGE_VARIABLES = {
+    "user_mention": "Mentions (pings) the user who sent the message.",
+    "user_name": "The user's name#discriminator (or name if on new usernames).",
+    "user_id": "The user's Discord ID.",
+    "channel_mention": "Mentions the channel the message was deleted from.",
+    "channel_name": "The plain name of the channel, without a mention.",
+    "line_limit": "The line limit that was exceeded.",
+    "line_count": "How many lines the deleted message actually had.",
+}
 
 
 class Linelimit(BaseCog): 
     """Limit the amount of lines per message, per channel or per category."""
 
     __author__ = ["Eternalll"]
-    __version__ = "1.0.0"
+    __version__ = "1.1.0"
 
     def __init__(self, bot: Red):
         self.bot = bot
@@ -25,6 +44,7 @@ class Linelimit(BaseCog):
             "mod_channel": None,
             "delete_delay": 10,
             "categories": {},
+            "delete_message": None,
         }
         self.config.register_channel(**def_channel)
         self.config.register_guild(**def_guild)
@@ -140,6 +160,68 @@ class Linelimit(BaseCog):
         else:
             await ctx.send("Done, the deletion notice will no longer auto-delete.")
 
+    @linelimit.group(name="message", invoke_without_command=True)
+    async def message_group(self, ctx):
+        """
+        Shows the deletion notice message users currently receive.
+
+        Use `[p]linelimit message set` to customize it, `[p]linelimit message reset`
+        to go back to the default, and `[p]linelimit message variables` to see what
+        placeholders are available.
+        """
+        if ctx.invoked_subcommand is not None:
+            return
+        current = await self.config.guild(ctx.guild).delete_message()
+        await ctx.send(
+            "Current deletion notice message (default in use)."
+            if not current
+            else "Current deletion notice message:"
+        )
+        await ctx.send(box(current or DEFAULT_MESSAGE))
+
+    @message_group.command(name="set")
+    async def message_set(self, ctx, *, message: str):
+        """
+        Sets a custom deletion notice message sent in-channel when a message is removed.
+
+        Use `[p]linelimit message variables` to see the placeholders you can use,
+        e.g. $user_mention, $channel_mention, and $line_limit.
+
+        `example: [p]linelimit message set $user_mention please keep it to $line_limit lines in $channel_mention!`
+        """
+        if len(message) > 1500:
+            return await ctx.send("That message is too long, please keep it under 1500 characters.")
+        await self.config.guild(ctx.guild).delete_message.set(message)
+        await ctx.send("Done, updated the deletion notice message. Preview:")
+        preview = Template(message).safe_substitute(
+            user_mention=ctx.author.mention,
+            user_name=str(ctx.author),
+            user_id=ctx.author.id,
+            channel_mention=ctx.channel.mention,
+            channel_name=ctx.channel.name,
+            line_limit=2,
+            line_count=5,
+        )
+        await ctx.send(preview[:2000])
+
+    @message_group.command(name="reset")
+    async def message_reset(self, ctx):
+        """
+        Resets the deletion notice message back to the default.
+        """
+        await self.config.guild(ctx.guild).delete_message.set(None)
+        await ctx.send("Done, reset the deletion notice message to the default.")
+
+    @message_group.command(name="variables")
+    async def message_variables(self, ctx):
+        """
+        Lists the placeholders you can use in a custom deletion notice message.
+        """
+        lines = [f"${name} - {desc}" for name, desc in MESSAGE_VARIABLES.items()]
+        await ctx.send(
+            "Available variables for `[p]linelimit message set`:\n" + box("\n".join(lines))
+        )
+
     @linelimit.command(name="list")
     async def list_settings(self, ctx):
         """
@@ -149,6 +231,7 @@ class Linelimit(BaseCog):
         mod_channel_id = await self.config.guild(guild).mod_channel()
         delay = await self.config.guild(guild).delete_delay()
         categories = await self.config.guild(guild).categories()
+        custom_message = await self.config.guild(guild).delete_message()
 
         channel_lines = []
         for channel in guild.text_channels:
@@ -172,6 +255,11 @@ class Linelimit(BaseCog):
             inline=True,
         )
         e.add_field(name="Deletion Notice Delay", value=f"{delay}s" if delay else "Disabled", inline=True)
+        e.add_field(
+            name="Deletion Notice Message",
+            value="Custom (see `[p]linelimit message`)" if custom_message else "Default",
+            inline=True,
+        )
         e.add_field(name="Channel Limits", value="\n".join(channel_lines) or "None set", inline=False)
         e.add_field(name="Category Limits", value="\n".join(category_lines) or "None set", inline=False)
         await ctx.send(embed=e)
@@ -238,11 +326,16 @@ class Linelimit(BaseCog):
         self-deletes after the configured delay.
         """
         delay = await self.config.guild(message.guild).delete_delay()
-        content = (
-            f"{message.author.mention}, your message was removed for exceeding the "
-            f"{limit}-line limit in {message.channel.mention}. Please condense it into "
-            f"{limit} line(s) or fewer and try again."
-        )
+        template = await self.config.guild(message.guild).delete_message()
+        content = Template(template or DEFAULT_MESSAGE).safe_substitute(
+            user_mention=message.author.mention,
+            user_name=str(message.author),
+            user_id=message.author.id,
+            channel_mention=message.channel.mention,
+            channel_name=message.channel.name,
+            line_limit=limit,
+            line_count=len(message.content.split("\n")),
+        )[:2000]
         try:
             await message.channel.send(content, delete_after=delay if delay else None)
         except discord.Forbidden:
