@@ -1,0 +1,14 @@
+{
+    "author": [
+        "Sharky The King", "Eternalll"
+    ],
+    "name": "Linelimit",
+    "hidden": true,
+    "install_msg": "Thank you for installing Charlimit!",
+    "description": "v1 version of Sharky's v3 version of Kowlin's v2 character limit, modified to target line limits only.",
+    "short": "linelimit",
+    "tags": [],
+    "type": "COG",
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "min_bot_version": "3.5.0"
+}
