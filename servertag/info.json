@@ -1,6 +1,5 @@
 {
     "author": ["Eternalll"],
-    "hidden": true,
     "name": "Servertag",
     "install_msg": "Thank you for installing Servertag!",
     "description": "Adds a simple command to show the server tag a user has equipped.",
