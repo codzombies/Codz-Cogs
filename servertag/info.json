@@ -1,0 +1,13 @@
+{
+    "author": ["Eternalll"],
+    "hidden": true,
+    "name": "Servertag",
+    "install_msg": "Thank you for installing Servertag!",
+    "description": "Adds a simple command to show the server tag a user has equipped.",
+    "short": "Look up a user's server tag.",
+    "tags": ["utility", "tag"],
+    "type": "COG",
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "install_msg": "Thanks for installing! Use the `[p]getservertag` command.",
+    "min_bot_version": "3.5.0"
+}
