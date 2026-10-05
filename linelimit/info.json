@@ -3,8 +3,7 @@
         "Sharky The King", "Eternalll"
     ],
     "name": "Linelimit",
-    "hidden": true,
-    "install_msg": "Thank you for installing Charlimit!",
+    "install_msg": "Thank you for installing Linelimit!",
     "description": "v1 version of Sharky's v3 version of Kowlin's v2 character limit, modified to target line limits only.",
     "short": "linelimit",
     "tags": [],
