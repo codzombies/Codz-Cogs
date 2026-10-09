@@ -2,13 +2,13 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 
 # Publicly Listed Cogs
 
-| Command | Description |
+| Cog | Description |
 | --- | --- |
 | BannedCount | blizzthewolf's bannedcount cog with increased ban list limit from 10,000 to 50,000. |
 | Check | Dav-Cogs' check cog that combines defender message logs/count, bettermodlog case display, shows users that left the server, runs async, and allows 3 checks per guild.|
 | ComponentsV2Utils | Send rich Discord Components V2 messages from YAML or JSON, similar to embedutils. |
 | GameInviteControl | Monitor and control Discord Rich Presence game invites in your server. Log invite activity, restrict invite usage to specific channels, and manage who can send/receive game invites. |
-| IdentifyActivity | Search (with paging support) users with certain activities in the server. |
+| IdentifyActivity | Search (with paging support) users currently on certain activities in the server. |
 | LineLimit | Restrict the amount of newlines that can be in a message per category or channel. |
 | ServerTag | View a user's server tag name, server ID, and image. |
 | StickerControl | Control where users can post Discord stickers using blacklist/whitelist systems. |
