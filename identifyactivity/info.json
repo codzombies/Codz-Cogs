@@ -1,7 +1,6 @@
 {
     "author": ["Eternalll"],
     "name": "IdentifyActivity",
-    "hidden": true,
     "short": "Find members by their current activity.",
     "description": "Search the server for members whose current activity (game, app, etc.) matches a piece of text. Results are shown in a paginated embed with back, close, and next buttons.",
     "install_msg": "Thanks for installing! Use `[p]identifyactivity <name>` to search. Requires the Presence and Server Members intents.",
