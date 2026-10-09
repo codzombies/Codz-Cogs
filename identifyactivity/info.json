@@ -1,0 +1,12 @@
+{
+    "author": ["Eternalll"],
+    "name": "IdentifyActivity",
+    "hidden": true,
+    "short": "Find members by their current activity.",
+    "description": "Search the server for members whose current activity (game, app, etc.) matches a piece of text. Results are shown in a paginated embed with back, close, and next buttons.",
+    "install_msg": "Thanks for installing! Use `[p]identifyactivity <name>` to search. Requires the Presence and Server Members intents.",
+    "requirements": [],
+    "tags": ["activity", "presence", "utility"],
+    "min_bot_version": "3.5.0",
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users."
+}
