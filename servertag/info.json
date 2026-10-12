@@ -7,5 +7,5 @@
     "type": "COG",
     "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
     "install_msg": "Thanks for installing! Use `[p]getservertag` to look up a user, or `[p]servertag <tag>` to list members wearing a tag.",
-    "min_bot_version": "3.5.0"
+    "min_bot_version": "3.5.21"
 }
