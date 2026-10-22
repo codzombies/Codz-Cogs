@@ -740,6 +740,54 @@ class Maven(commands.Cog):
         embed.add_field(name="Checkouts", value=str(len(d["roles"])))
         await ctx.send(embed=embed)
 
+    @setmaven.command(name="quickstart")
+    async def sm_quickstart(self, ctx: commands.Context):
+        """Step-by-step setup guide (shows what's already done)."""
+        d = await self.config.guild(ctx.guild).all()
+        roles = d["roles"]
+        p = ctx.clean_prefix
+        has_chan = self._notify_channel(ctx.guild, d) is not None
+        has_roles = bool(roles)
+        has_reqs = has_roles and any(e["requires"] for e in roles.values())
+        mark = lambda b: "✅" if b else "⬜"
+        embed = discord.Embed(
+            title="Maven quick start",
+            description="Complete these in order. ✅ marks what's already configured.",
+            color=0x55ACEE,
+        )
+        embed.add_field(
+            name=f"{mark(has_chan)} 1. Set the notification channel (required)",
+            value=f"`{p}setmaven notify channel <#channel>`\nCheckout stays disabled until this is set.",
+            inline=False,
+        )
+        embed.add_field(
+            name=f"{mark(has_roles)} 2. Add a role to the checkout menu",
+            value=(f"`{p}setmaven rolecheckout <name> <role> label:<text> description:<text> "
+                   f"emoji:<emoji> time:15m`\nLabel max {LABEL_MAX} chars, description max {DESC_MAX}. "
+                   f"Time can be `5m`, `15m`, `1h`, etc."),
+            inline=False,
+        )
+        embed.add_field(
+            name=f"{mark(has_reqs)} 3. Choose who may check it out",
+            value=(f"`{p}setmaven requirement add <name> <role> [role...]`\n"
+                   f"Nobody can check a role out until it has at least one requirement."),
+            inline=False,
+        )
+        embed.add_field(
+            name="4. Optional: notifications and menu",
+            value=(f"`{p}setmaven notify role <role>` and `{p}setmaven notify mode <ping|silent|none>`\n"
+                   f"`{p}help setmaven notify` and `{p}help setmaven menu` for message, colour, timeout, etc."),
+            inline=False,
+        )
+        embed.add_field(
+            name="Where to look next",
+            value=(f"`{p}help setmaven`: all admin commands\n"
+                   f"`{p}setmaven settings` / `{p}setmaven list`: current settings and checkouts\n"
+                   f"`{p}help maven`: user commands (`{p}maven`, `{p}maven checkin`, `{p}maven status`)"),
+            inline=False,
+        )
+        await ctx.send(embed=embed)
+
     # ---- notification settings ---------------------------------------------
     @setmaven.group(name="notify")
     async def sm_notify(self, ctx: commands.Context):
