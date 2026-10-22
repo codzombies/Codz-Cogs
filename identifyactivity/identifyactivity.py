@@ -158,11 +158,13 @@ class IdentifyActivity(commands.Cog):
     # ------------------------------------------------------------------ #
     @commands.command(name="identifyactivity", aliases=["whoplays"])
     @commands.guild_only()
+    @commands.mod_or_permissions()  # Mod/admin roles from `[p]set addmodrole` / `[p]set addadminrole`
     @commands.bot_has_permissions(embed_links=True)
     async def identifyactivity(self, ctx: commands.Context, *, query: str):
         """List members whose current activity matches the given text.
 
         The search is case-insensitive and matches partial names.
+        Restricted to members with a mod or admin role (see `[p]set addmodrole`).
 
         **Examples:**
         - `[p]identifyactivity Call of Duty`
