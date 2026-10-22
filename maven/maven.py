@@ -28,7 +28,7 @@ from redbot.core.utils.mod import is_admin_or_superior
 
 log = logging.getLogger("red.maven")
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 NAME_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
 DUR_RE = re.compile(r"(\d+)(s|m|h)")
@@ -270,6 +270,8 @@ class Maven(commands.Cog):
                 role = self._eligible(member, entry)
                 if role is not None:
                     available.append((name, entry, role))
+        # Alphabetical by what the member sees in the menu (label, falling back to role name).
+        available.sort(key=lambda t: ((t[1].get("label") or t[2].name).casefold(), t[0]))
         return data, active, available[:25], at_limit
 
     def _panel_embed(self, member, data, active, available, at_limit) -> discord.Embed:
