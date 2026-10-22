@@ -251,7 +251,8 @@ class Maven(commands.Cog):
         return discord.SelectOption(
             label=(entry.get("label") or role.name)[:LABEL_MAX],
             value=name,
-            description=(entry.get("description") or None),
+            description=(f"{entry['description']} • {dur(entry['time'])}"
+                         if entry.get("description") else dur(entry["time"])),
             emoji=emoji,
         )
 
@@ -289,10 +290,6 @@ class Maven(commands.Cog):
                 value="You don't have access to check out any roles.",
                 inline=False,
             )
-        for name, entry, role in available:
-            title = f"{entry.get('emoji') or ''} {entry.get('label') or role.name}".strip()
-            body = entry.get("description") or role.name
-            embed.add_field(name=title[:256], value=f"{body}\n⏱ {dur(entry['time'])}\n⠀", inline=True)
         if active:
             lines = []
             for rec in active.values():
