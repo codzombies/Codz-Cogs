@@ -10,6 +10,6 @@
   "requirements": [],
   "tags": ["roles", "pam", "pim", "moderation", "security"],
   "type": "COG",
-  "hidden": true,
+  "hidden": false,
   "disabled": false
 }
