@@ -27,6 +27,8 @@ from redbot.core.utils.chat_formatting import humanize_timedelta
 
 log = logging.getLogger("red.maven")
 
+__version__ = "1.0.0"
+
 NAME_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
 DUR_RE = re.compile(r"(\d+)(s|m|h)")
 MIN_CHECKOUT = 60  # seconds
@@ -730,7 +732,7 @@ class Maven(commands.Cog):
         d = await self.config.guild(ctx.guild).all()
         chan = f"<#{d['notify_channel']}>" if d["notify_channel"] else "⚠️ *not set (checkout disabled)*"
         role = f"<@&{d['notify_role']}>" if d["notify_role"] else "*none*"
-        embed = discord.Embed(title="Maven settings", color=0x55ACEE)
+        embed = discord.Embed(title=f"Maven settings • v{__version__}", color=0x55ACEE)
         embed.add_field(name="Notify channel", value=chan)
         embed.add_field(name="Notify role", value=role)
         embed.add_field(name="Notify mode", value=d["notify_mode"])
