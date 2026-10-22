@@ -2,7 +2,7 @@ import math
 from typing import List, Optional
 
 import discord
-from redbot.core import commands
+from redbot.core import checks, commands
 from redbot.core.bot import Red
 
 PER_PAGE = 20
@@ -128,6 +128,7 @@ class ServerTag(commands.Cog):
     # ------------------------------------------------------------------
     @commands.command(name="servertag", aliases=["tagmembers"])
     @commands.guild_only()
+    @checks.mod_or_permissions(manage_messages=True)
     @commands.bot_has_permissions(embed_links=True)
     async def servertag(self, ctx: commands.Context, *, tag: str):
         """List members in this server wearing the given server tag.
