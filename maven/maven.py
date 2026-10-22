@@ -24,15 +24,17 @@ from discord.ext import tasks
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_timedelta
+from redbot.core.utils.mod import is_admin_or_superior
 
 log = logging.getLogger("red.maven")
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 NAME_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
 DUR_RE = re.compile(r"(\d+)(s|m|h)")
 MIN_CHECKOUT = 60  # seconds
 MAX_CHECKOUT = 24 * 3600  # seconds
+DENY_LOG_INTERVAL = 60  # seconds between logged unauthorized attempts per user
 LABEL_MAX = 25
 DESC_MAX = 50
 
@@ -192,6 +194,7 @@ class Maven(commands.Cog):
         self.config.register_member(**DEFAULT_MEMBER)
         self._lock = asyncio.Lock()
         self._open_panels: set = set()
+        self._deny_log: Dict[Tuple[int, int], float] = {}
 
     async def cog_load(self) -> None:
         self.expiry_loop.start()
@@ -302,14 +305,20 @@ class Maven(commands.Cog):
 
     async def _open_panel(self, ctx: commands.Context):
         key = (ctx.guild.id, ctx.author.id)
+        data, active, available, at_limit = await self._panel_state(ctx.author)
+
+        # Members with no possible access (and nothing checked out) don't get a menu,
+        # unless they are a Red admin / Discord Administrator.
+        role_ids = {r.id for r in ctx.author.roles}
+        has_access = any(set(e.get("requires", [])) & role_ids for e in data["roles"].values())
+        if not has_access and not active and not await is_admin_or_superior(self.bot, ctx.author):
+            return await self._deny_unauthorized(ctx, data)
+
         if key in self._open_panels:
             return await ctx.send(
                 err("You already have a checkout menu open. Use it or wait for it to expire."),
                 delete_after=15,
             )
-        data, active, available, at_limit = await self._panel_state(ctx.author)
-        if not data["roles"]:
-            return await ctx.send(err("No roles are configured for checkout."), delete_after=15)
         if not self._notify_channel(ctx.guild, data):
             return await ctx.send(
                 err("Checkout is disabled until an admin sets a notification channel "
@@ -321,6 +330,38 @@ class Maven(commands.Cog):
         embed = self._panel_embed(ctx.author, data, active, available, at_limit)
         self._open_panels.add(key)
         view.message = await ctx.send(embed=embed, view=view)
+
+    async def _deny_unauthorized(self, ctx: commands.Context, data: dict):
+        """Silently ignore the user; log the attempt (max one per user per minute)."""
+        if not data["roles"]:
+            return  # nothing configured, nothing to attempt
+        now = time.time()
+        key = (ctx.guild.id, ctx.author.id)
+        if now - self._deny_log.get(key, 0) < DENY_LOG_INTERVAL:
+            return
+        chan = self._notify_channel(ctx.guild, data)
+        if chan is None:
+            return
+        self._deny_log = {k: t for k, t in self._deny_log.items() if now - t < DENY_LOG_INTERVAL}
+        self._deny_log[key] = now
+        embed = discord.Embed(
+            title="Unauthorized Access Attempt",
+            color=0xFFA500,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="Mention", value=ctx.author.mention, inline=True)
+        embed.add_field(name="UserID", value=f"`{ctx.author.id}`", inline=True)
+        embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+        embed.add_field(
+            name="Automation Description",
+            value="A user without checkout access attempted to open the privileged access menu.",
+            inline=False,
+        )
+        embed.set_footer(text=data["notify_footer"])
+        try:
+            await chan.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException:
+            log.exception("Failed to send unauthorized attempt log")
 
     def _notify_channel(self, guild: discord.Guild, data: dict) -> Optional[discord.abc.Messageable]:
         chan = guild.get_channel(data["notify_channel"]) if data["notify_channel"] else None
