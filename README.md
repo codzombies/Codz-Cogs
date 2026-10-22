@@ -9,6 +9,7 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 | ComponentsV2Utils | Send rich Discord Components V2 messages from YAML or JSON, similar to embedutils. |
 | GameInviteControl | Monitor and control Discord Rich Presence game invites in your server. Log invite activity, restrict invite usage to specific channels, and manage who can send/receive game invites. |
 | IdentifyActivity | Search (with paging support) users currently on certain activities in the server. |
+| Maven | Privileged Access Management (PAM) for your server. Allow role checkouts instead of keeping dangerous permissions 24/7. |
 | LineLimit | Restrict the amount of newlines that can be in a message per category or channel. |
 | ServerTag | View a user's server tag name, server ID, and image. |
 | StickerControl | Control where users can post Discord stickers using blacklist/whitelist systems. |
