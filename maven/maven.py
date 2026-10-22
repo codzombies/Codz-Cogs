@@ -8,7 +8,7 @@ User commands:
 
 Admin commands (Red admin OR Discord Administrator permission):
     [p]setmaven rolecheckout <name> <role> [label:..] [description:..] [emoji:..] [time:..]
-    [p]setmaven requirement <name> [roles...]
+    [p]setmaven requirement add|remove|list|clear <name> [roles...]
     [p]setmaven ...             (see [p]help setmaven)
 """
 
@@ -610,39 +610,86 @@ class Maven(commands.Cog):
         msg = ok(f"Checkout `{name}` set for {role.mention} ({dur(entry['time'])}).")
         if not entry["requires"]:
             msg += (f"\n⚠️ No requirements yet, so nobody can check it out. "
-                    f"Use `{ctx.clean_prefix}setmaven requirement {name} <roles...>`.")
+                    f"Use `{ctx.clean_prefix}setmaven requirement add {name} <roles...>`.")
         await ctx.send(msg, allowed_mentions=discord.AllowedMentions.none())
 
-    @setmaven.command(name="requirement", aliases=["requirements"])
-    async def sm_requirement(
+    @setmaven.group(name="requirement", aliases=["requirements"])
+    async def sm_requirement(self, ctx: commands.Context):
+        """Manage which role(s) may check out a role.
+
+        Subcommands: `add`, `remove`, `list`, `clear`.
+        """
+
+    @sm_requirement.command(name="add")
+    async def sm_requirement_add(
         self, ctx: commands.Context, name: str, roles: commands.Greedy[discord.Role]
     ):
-        """Set which role(s) may check out a role (replaces the existing list).
+        """Add one or more roles that may check out `name`.
 
-        With no roles given, shows the current requirements.
-        Example: `[p]setmaven requirement admin @Administrator @Senior Mod`
+        Example: `[p]setmaven requirement add admin @Administrator @Senior Mod`
         """
         name = name.lower()
+        if not roles:
+            return await ctx.send(err("Provide at least one role."))
         async with self.config.guild(ctx.guild).roles() as cfg:
             entry = cfg.get(name)
             if entry is None:
                 return await ctx.send(err(f"No checkout named `{name}`."))
-            if not roles:
-                cur = " ".join(f"<@&{r}>" for r in entry["requires"]) or "*none*"
-                return await ctx.send(f"Requirements for `{name}`: {cur}",
-                                      allowed_mentions=discord.AllowedMentions.none())
             bad = [r for r in roles if r.is_default() or r.id == entry["role_id"]]
             if bad:
                 return await ctx.send(err("Requirements can't be @everyone or the checkout role itself."))
-            entry["requires"] = sorted({r.id for r in roles})
+            current = set(entry["requires"])
+            added = [r for r in roles if r.id not in current]
+            current.update(r.id for r in roles)
+            entry["requires"] = sorted(current)
+        if not added:
+            return await ctx.send(err("Those roles were already required."))
         await ctx.send(
-            ok(f"`{name}` can now be checked out by: " + " ".join(r.mention for r in roles)),
+            ok(f"Added to `{name}`: " + " ".join(r.mention for r in added)),
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @setmaven.command(name="clearrequirement")
-    async def sm_clearrequirement(self, ctx: commands.Context, name: str):
-        """Remove all requirements from a checkout (nobody can then check it out)."""
+    @sm_requirement.command(name="remove", aliases=["delete"])
+    async def sm_requirement_remove(
+        self, ctx: commands.Context, name: str, roles: commands.Greedy[discord.Role]
+    ):
+        """Remove one or more roles from the requirements of `name`.
+
+        If the last requirement is removed, nobody can check the role out.
+        """
+        name = name.lower()
+        if not roles:
+            return await ctx.send(err("Provide at least one role."))
+        async with self.config.guild(ctx.guild).roles() as cfg:
+            entry = cfg.get(name)
+            if entry is None:
+                return await ctx.send(err(f"No checkout named `{name}`."))
+            current = set(entry["requires"])
+            removed = [r for r in roles if r.id in current]
+            if not removed:
+                return await ctx.send(err("None of those roles were required."))
+            current.difference_update(r.id for r in removed)
+            entry["requires"] = sorted(current)
+        msg = ok(f"Removed from `{name}`: " + " ".join(r.mention for r in removed))
+        if not current:
+            msg += "\n⚠️ No requirements remain, so nobody can check this role out."
+        await ctx.send(msg, allowed_mentions=discord.AllowedMentions.none())
+
+    @sm_requirement.command(name="list", aliases=["show"])
+    async def sm_requirement_list(self, ctx: commands.Context, name: str):
+        """Show the requirements for `name`."""
+        name = name.lower()
+        roles = await self.config.guild(ctx.guild).roles()
+        entry = roles.get(name)
+        if entry is None:
+            return await ctx.send(err(f"No checkout named `{name}`."))
+        cur = " ".join(f"<@&{r}>" for r in entry["requires"]) or "*none (unavailable)*"
+        await ctx.send(f"Requirements for `{name}`: {cur}",
+                       allowed_mentions=discord.AllowedMentions.none())
+
+    @sm_requirement.command(name="clear")
+    async def sm_requirement_clear(self, ctx: commands.Context, name: str):
+        """Remove all requirements from `name` (nobody can then check it out)."""
         name = name.lower()
         async with self.config.guild(ctx.guild).roles() as cfg:
             if name not in cfg:
