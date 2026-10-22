@@ -1,0 +1,15 @@
+{
+  "author": ["Eternalll"],
+  "name": "maven",
+  "short": "Privileged access management: time-boxed role checkout with audit logging.",
+  "description": "Keys aren't left in locks, why should it be any different for dangerous permissions? MAVEN is a privileged identity management (PAM) tool for Staff to check out privileged roles when needed.",
+  "end_user_data_statement": "This cog stores Discord user IDs, role IDs and checkout/expiry timestamps for active role checkouts. Records are removed when a checkout ends or when a data deletion request is made.",
+  "install_msg": "Thanks for installing maven. Start with `[p]setmaven settings`.",
+  "min_bot_version": "3.5.12",
+  "min_python_version": [3, 10, 0],
+  "requirements": [],
+  "tags": ["roles", "pam", "pim", "moderation", "security"],
+  "type": "COG",
+  "hidden": true,
+  "disabled": false
+}
