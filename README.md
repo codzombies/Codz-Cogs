@@ -11,7 +11,7 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 | IdentifyActivity | Search (with paging support) users currently on certain activities in the server. |
 | Maven | Privileged Access Management (PAM) for your server. Allow role checkouts instead of keeping dangerous permissions 24/7. |
 | LineLimit | Restrict the amount of newlines that can be in a message per category or channel. |
-| ServerTag | View a user's server tag name, server ID, and image. |
+| ServerTag | View a user's server tag name, server ID, and image. Mods/Admins can view list of users with a certain tag name. |
 | StickerControl | Control where users can post Discord stickers using blacklist/whitelist systems. |
 
 Cogs not listed above or hidden are semi-private forks. As in, you would likely not want to run these on your server as they make modifications 
