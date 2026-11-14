@@ -27,6 +27,7 @@ from .render import (
     clean_name,
     display_name,
     game_from_api,
+    map_name,
     md_escape,
     new_embed_config,
     new_server_config,
@@ -709,7 +710,7 @@ class Plutonium(commands.Cog):
             f"**{md_escape(clean_name(data.get('name')) or address)}**",
             f"Address: `{address}` \N{MIDDLE DOT} [gameserve.rs page](<{server_url(address, data.get('id'))}>)",
             f"Game: {game.get('name', '?')} (`{game.get('id', '?')}`) \N{MIDDLE DOT} platform `{data.get('platform', '?')}`",
-            f"Map: {(data.get('map') or {}).get('display', '?')} \N{MIDDLE DOT} Mode: {(data.get('mode') or {}).get('display', '?')}",
+            f"Map: {map_name(data) or '?'} \N{MIDDLE DOT} Mode: {(data.get('mode') or {}).get('display', '?')}",
             f"Players: {players.get('current', '?')}/{players.get('max', '?')}",
         ]
         if data.get("isZombies") and data.get("zombiesRound"):

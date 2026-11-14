@@ -30,6 +30,23 @@ TEXT_LIMIT = 4000  # Discord's total text budget for a Components V2 message
 _COLOR_CODE_RE = re.compile(r"\^[0-9:;]")
 
 
+# Display-only fixes for raw map names the API doesn't prettify well
+# (e.g. Black Ops' remastered World at War maps show as "Cod5 Sumpf").
+MAP_NAME_OVERRIDES = {
+    "zombie_cod5_prototype": "Nacht Der Untoten",
+    "zombie_cod5_asylum": "Verrückt",
+    "zombie_cod5_sumpf": "Shi No Numa",
+    "zombie_cod5_factory": "Der Riese",
+}
+
+
+def map_name(data: Optional[dict]) -> Optional[str]:
+    """Human-readable map name for a server dict, applying MAP_NAME_OVERRIDES."""
+    map_data = (data or {}).get("map") or {}
+    raw = str(map_data.get("raw") or "").lower()
+    return MAP_NAME_OVERRIDES.get(raw) or map_data.get("display") or map_data.get("raw")
+
+
 def game_from_api(game_id: Optional[str]) -> Optional[str]:
     """Map an API game tag (T4ZM, T6, ...) to a section key (T4/T5/T6)."""
     game_id = (game_id or "").upper()
@@ -150,7 +167,7 @@ class _Server:
 
         if details and self.state == "online" and self.data:
             parts = [
-                (self.data.get("map") or {}).get("display"),
+                map_name(self.data),
                 (self.data.get("mode") or {}).get("display"),
             ]
             rnd = self.data.get("zombiesRound")
