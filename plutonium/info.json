@@ -1,0 +1,13 @@
+{
+    "author": ["Eternalll"],
+    "name": "Plutonium",
+    "short": "Live Components V2 status embeds for Plutonium T4/T5/T6 gameservers.",
+    "description": "Keeps one or more Components V2 messages updated with the live status of configured Plutonium gameservers (T4, T5, T6): name, map, mode, players and zombies round. Data comes from the free public gameserve.rs API, with caching and rate limiting built in. Emojis, section titles, header text and maintenance status are configurable per embed.",
+    "tags": ["plutonium", "call of duty", "zombies", "gameserver", "status", "components", "gameserve.rs"],
+    "type": "COG",
+    "hidden": true,
+    "install_msg": "Thanks for installing! Create a status embed with `[p]pluto create <name> [channel]`, then add servers with `[p]pluto add <name> <ip:port>`.",
+    "min_bot_version": "3.5.21",
+    "min_python_version": [3, 9, 0],
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users."
+}
