@@ -27,6 +27,7 @@ from .render import (
     clean_name,
     display_name,
     game_from_api,
+    md_escape,
     new_embed_config,
     new_server_config,
 )
@@ -376,7 +377,7 @@ class Plutonium(commands.Cog):
                     extras.append(f"label: {cfg['label']}")
                 if cfg.get("note"):
                     extras.append(f"note: {cfg['note']}")
-                shown = discord.utils.escape_markdown(display_name(address, cfg, data))
+                shown = md_escape(display_name(address, cfg, data))
                 lines.append(
                     f"- `{address}` **{shown}** \N{EM DASH} {state}"
                     + (f"\n  -# {' | '.join(extras)}" if extras else "")
@@ -497,7 +498,7 @@ class Plutonium(commands.Cog):
             live = clean_name((data or {}).get("name"))
             if live:
                 servers[address]["last_name"] = live
-        shown = discord.utils.escape_markdown(live or address)
+        shown = md_escape(live or address)
         await self._apply(
             ctx, name, "\n".join([f"{verb} **{shown}** (`{address}`) to `{name}` under {game}.", *notes])
         )
@@ -705,7 +706,7 @@ class Plutonium(commands.Cog):
         players = data.get("players") or {}
         game = data.get("game") or {}
         lines = [
-            f"**{discord.utils.escape_markdown(clean_name(data.get('name')) or address)}**",
+            f"**{md_escape(clean_name(data.get('name')) or address)}**",
             f"Address: `{address}` \N{MIDDLE DOT} [gameserve.rs page](<{server_url(address, data.get('id'))}>)",
             f"Game: {game.get('name', '?')} (`{game.get('id', '?')}`) \N{MIDDLE DOT} platform `{data.get('platform', '?')}`",
             f"Map: {(data.get('map') or {}).get('display', '?')} \N{MIDDLE DOT} Mode: {(data.get('mode') or {}).get('display', '?')}",

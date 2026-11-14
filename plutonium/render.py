@@ -44,9 +44,39 @@ def clean_name(name: Optional[str]) -> str:
     return _COLOR_CODE_RE.sub("", name or "").strip()
 
 
+def _simple_brackets(text: str) -> bool:
+    """True if [ ] are balanced and un-nested (safe inside masked-link text)."""
+    depth = 0
+    for ch in text:
+        if ch == "[":
+            depth += 1
+            if depth > 1:
+                return False
+        elif ch == "]":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
 def md_escape(text: str) -> str:
-    text = discord.utils.escape_markdown(text)
-    return text.replace("[", "\\[").replace("]", "\\]")
+    """
+    Neutralise markdown in a server name with as little escaping as possible.
+
+    Discord can display escaping backslashes literally (e.g. "\\|"), so a
+    character is only touched when it could actually form markdown.
+    """
+    text = text.replace("\\", "\\\\")
+    # Only "||" starts a spoiler; break runs of pipes with a zero-width space.
+    text = re.sub(r"\|(?=\|)", "|​", text)
+    # Emphasis/strike/code need a pair, so a single occurrence is harmless.
+    for ch in "*_~`":
+        if text.count(ch) >= 2:
+            text = text.replace(ch, "\\" + ch)
+    # Balanced brackets like "[HGM] Zombies" are fine inside link text.
+    if "](" in text or not _simple_brackets(text):
+        text = text.replace("[", "\\[").replace("]", "\\]")
+    return text
 
 
 def new_embed_config(channel_id: int) -> dict:
