@@ -1,19 +1,3 @@
-"""
-Brutus - Warn, mute, kick and ban from a message's Apps menu.
-Copyright (C) 2026-present  EternalllZM
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""
-
 import logging
 from typing import Dict
 
@@ -25,6 +9,7 @@ from redbot.core.utils.chat_formatting import box, humanize_timedelta, pagify
 
 from .actions import ACTIONS, MAX_REASONS, TITLES, denial, parse_reasons
 from .views import ActionModal
+from .viewuser import ViewUserModal, can_view, get_defender
 
 log = logging.getLogger("red.codz.brutus")
 
@@ -36,6 +21,7 @@ DEFAULT_PERMISSIONS = {
     "mute": discord.Permissions(moderate_members=True),
     "kick": discord.Permissions(kick_members=True),
     "ban": discord.Permissions(ban_members=True),
+    "view": discord.Permissions(moderate_members=True),
 }
 
 
@@ -53,6 +39,9 @@ class Brutus(commands.Cog):
     with the author's ID, a preset reason and optional details. The action runs like the
     matching Red command: same DM (if turned on in that cog), same modlog case. The
     message is deleted afterwards.
+
+    Apps > View User shows the author's modlog cases, recent messages (from Defender's
+    cache) or user info, only to you.
     """
 
     __version__ = "1.0.0"
@@ -63,8 +52,8 @@ class Brutus(commands.Cog):
         self.config.register_guild(reasons={}, delete_message=True)
 
         self.menus: Dict[str, app_commands.ContextMenu] = {}
-        for action in ACTIONS:
-            menu = app_commands.ContextMenu(name=TITLES[action], callback=getattr(self, f"_menu_{action}"))
+        for action, name in (*TITLES.items(), ("view", "View User")):
+            menu = app_commands.ContextMenu(name=name, callback=getattr(self, f"_menu_{action}"))
             menu.default_permissions = DEFAULT_PERMISSIONS[action]
             menu.guild_only = True
             menu.allowed_contexts = app_commands.AppCommandContext(guild=True)
@@ -100,6 +89,21 @@ class Brutus(commands.Cog):
 
     async def _menu_ban(self, inter: discord.Interaction, message: discord.Message):
         await self._open(inter, "ban", message)
+
+    async def _menu_view(self, inter: discord.Interaction, message: discord.Message):
+        if inter.guild is None or not isinstance(inter.user, discord.Member):
+            return await inter.response.send_message("This only works in servers.", ephemeral=True)
+        if await self.bot.cog_disabled_in_guild(self, inter.guild):
+            return await inter.response.send_message("Brutus is disabled in this server.", ephemeral=True)
+        if not await can_view(self.bot, inter.user):
+            return await inter.response.send_message(
+                "Only staff members are allowed to view user details. You sure don't look like one.", ephemeral=True
+            )
+        if message.webhook_id is not None:
+            return await inter.response.send_message(
+                "That message was sent by a webhook, so there's no user to look up.", ephemeral=True
+            )
+        await inter.response.send_modal(ViewUserModal(self, message.author.id))
 
     async def _open(self, inter: discord.Interaction, action: str, message: discord.Message):
         if inter.guild is None or not isinstance(inter.user, discord.Member):
@@ -158,6 +162,10 @@ class Brutus(commands.Cog):
         for action in ACTIONS:
             lines.append(f"  {TITLES[action]}: {len(conf['reasons'].get(action, []))}/{MAX_REASONS}")
 
+        lines.append(
+            "View User recent messages: "
+            + ("On (Defender's cache)" if get_defender(self.bot) else "Off (needs Defender's message cache)")
+        )
         lines += ["", "Red settings used (change them in their cogs):"]
         mod = self.bot.get_cog("Mod")
         if mod is not None:
@@ -192,7 +200,9 @@ class Brutus(commands.Cog):
         if len(enabled_menus) < len(self.menus):
             await ctx.send(
                 f"To add the missing Apps menu entries, run `{ctx.clean_prefix}slash enablecog brutus` "
-                f"then `{ctx.clean_prefix}slash sync`. Discord allows 5 message entries per bot."
+                f"then `{ctx.clean_prefix}slash sync`. Discord allows 5 message entries per bot and Brutus "
+                f"has 5: to keep room for another cog, turn one off with "
+                f"`{ctx.clean_prefix}slash disable \"View User\" message`."
             )
 
     @brutusset.command(name="deletemessage")
