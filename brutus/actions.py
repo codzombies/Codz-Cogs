@@ -91,16 +91,44 @@ async def text_prefix(bot, guild: discord.Guild) -> str:
     return next((p for p in prefixes if not re.fullmatch(r"<@!?\d+> ", p)), prefixes[0])
 
 
-def as_moderator(source: discord.Message, moderator: discord.Member, content: str) -> discord.Message:
-    """A copy of `source` that reads as `moderator` having typed `content` in its channel"""
-    message = copy(source)
+def anchor_message(inter: discord.Interaction, source: Optional[discord.Message] = None) -> discord.Message:
+    """A message in the channel the action is taken from: the targeted message, or (from a user's
+    Apps menu, where there's none) a synthetic one, built like discord.py's Context.from_interaction"""
+    if source is not None:
+        return source
+    payload = {
+        "id": inter.id,
+        "reactions": [],
+        "embeds": [],
+        "mention_everyone": False,
+        "tts": False,
+        "pinned": False,
+        "edited_timestamp": None,
+        "type": discord.MessageType.context_menu_command.value,
+        "flags": 64,
+        "content": "",
+        "mentions": [],
+        "mention_roles": [],
+        "attachments": [],
+    }
+    channel = inter.channel or discord.PartialMessageable(
+        state=inter._state, guild_id=inter.guild_id, id=inter.channel_id
+    )
+    message = discord.Message(state=inter._state, channel=channel, data=payload)
+    message.author = inter.user
+    return message
+
+
+def as_moderator(anchor: discord.Message, moderator: discord.Member, content: str) -> discord.Message:
+    """A copy of `anchor` that reads as `moderator` having typed `content` in its channel"""
+    message = copy(anchor)
     message.author = moderator
     message.content = content
     return message
 
 
-async def can_run_command(cog: "Brutus", source: discord.Message, moderator: discord.Member, action: str) -> bool:
-    """Whether `moderator` could run the action's Red command in the channel of `source`
+async def can_run_command(cog: "Brutus", anchor: discord.Message, moderator: discord.Member, action: str) -> bool:
+    """Whether `moderator` could run the action's Red command in the channel of `anchor`
 
     Covers Red's own checks (admin/mod roles, Discord permissions, the bot's permissions)
     and anything set with the Permissions cog, like [p]warningset allowcustomreasons does"""
@@ -109,7 +137,7 @@ async def can_run_command(cog: "Brutus", source: discord.Message, moderator: dis
     if command is None:
         return False
     prefix = await text_prefix(cog.bot, moderator.guild)
-    ctx = await cog.bot.get_context(as_moderator(source, moderator, f"{prefix}{name}"))
+    ctx = await cog.bot.get_context(as_moderator(anchor, moderator, f"{prefix}{name}"))
     try:
         return await command.can_run(ctx, check_all_parents=True, change_permission_state=False)
     except commands.CommandError:
@@ -117,7 +145,7 @@ async def can_run_command(cog: "Brutus", source: discord.Message, moderator: dis
 
 
 async def denial(
-    cog: "Brutus", moderator: discord.Member, action: str, target_id: int, source: discord.Message
+    cog: "Brutus", moderator: discord.Member, action: str, target_id: int, anchor: discord.Message
 ) -> Optional[str]:
     """Returns why `moderator` can't run `action` on `target_id`, or None if they can"""
     bot = cog.bot
@@ -134,7 +162,7 @@ async def denial(
     if await bot.cog_disabled_in_guild(owner, guild):
         return f"The {cog_name} cog is disabled in this server, so I can't {action} users."
 
-    if not await can_run_command(cog, source, moderator, action):
+    if not await can_run_command(cog, anchor, moderator, action):
         return f"Denied. You can't use `{name}` in this channel, so you can't use this action here either."
 
     if target_id == moderator.id:
@@ -201,11 +229,11 @@ async def _send_kickban_dm(cog: "Brutus", guild: discord.Guild, target: discord.
     return True
 
 
-async def _warn_threshold_actions(cog: "Brutus", warnings, moderator, source, target, points: int):
+async def _warn_threshold_actions(cog: "Brutus", warnings, moderator, anchor, target, points: int):
     """Runs the Warnings cog's action for the target's new point total, like [p]warn does
 
     Those actions are commands (e.g. `{prefix}mute {user} 1h`) invoked as if the moderator
-    typed them in the channel of the targeted message"""
+    typed them in the channel the warning was given from"""
     try:
         from redbot.cogs.warnings.helpers import warning_points_add_check
     except ImportError:
@@ -214,7 +242,7 @@ async def _warn_threshold_actions(cog: "Brutus", warnings, moderator, source, ta
     ctx = SimpleNamespace(
         bot=cog.bot,
         guild=moderator.guild,
-        message=as_moderator(source, moderator, ""),
+        message=as_moderator(anchor, moderator, ""),
         prefix=await text_prefix(cog.bot, moderator.guild),
     )
     try:
@@ -235,7 +263,7 @@ class Outcome:
         self.target: Union[discord.Member, discord.User, discord.Object, None] = None
 
 
-async def _warn(cog, inter, moderator, target: discord.Member, reason: str, points: int, source) -> Outcome:
+async def _warn(cog, inter, moderator, target: discord.Member, reason: str, points: int, anchor) -> Outcome:
     """Warns `target` the way [p]warn does: DM, stored warning, point actions, warn channel, case"""
     out = Outcome()
     bot = cog.bot
@@ -246,7 +274,7 @@ async def _warn(cog, inter, moderator, target: discord.Member, reason: str, poin
     warning_id = str(inter.id)
 
     settings = await warnings.config.guild(guild).all()
-    colour = await bot.get_embed_colour(source.channel)
+    colour = await bot.get_embed_colour(anchor.channel)
 
     def make_embed() -> discord.Embed:
         title = f"Warning from {moderator}" if settings["show_mod"] else "Warning"
@@ -265,7 +293,7 @@ async def _warn(cog, inter, moderator, target: discord.Member, reason: str, poin
         user_warnings[warning_id] = {"points": points, "description": reason, "mod": moderator.id}
     total = await member_settings.total_points() + points
     await member_settings.total_points.set(total)
-    await _warn_threshold_actions(cog, warnings, moderator, source, target, total)
+    await _warn_threshold_actions(cog, warnings, moderator, anchor, target, total)
 
     if settings["toggle_channel"]:
         warn_channel = bot.get_channel(settings["warn_channel"])
@@ -397,27 +425,29 @@ async def run_action(
     action: str,
     target_id: int,
     reason: str,
-    source: discord.Message,
+    source: Optional[discord.Message],
     *,
     duration: Optional[datetime.timedelta] = None,
     points: int = 1,
     delete_seconds: int = 0,
 ):
-    """Runs `action` after the modal is submitted, then deletes `source` if it's the target's"""
+    """Runs `action` after the modal is submitted, then deletes `source` (the targeted message,
+    None from a user's Apps menu) if it's the target's"""
     await inter.response.defer(ephemeral=True, thinking=True)
     moderator: discord.Member = inter.user
+    anchor = anchor_message(inter, source)
 
     async def reply(text: str):
         await inter.followup.send(text, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     # Checked again: the ID may have been edited, and things may have changed while the modal was open
-    reason_denied = await denial(cog, moderator, action, target_id, source)
+    reason_denied = await denial(cog, moderator, action, target_id, anchor)
     if reason_denied:
         return await reply(reason_denied)
 
     target = moderator.guild.get_member(target_id)
     if action == "warn":
-        out = await _warn(cog, inter, moderator, target, reason, points, source)
+        out = await _warn(cog, inter, moderator, target, reason, points, anchor)
     elif action == "mute":
         out = await _mute(cog, moderator, target, reason, duration)
     elif action == "kick":
@@ -436,7 +466,7 @@ async def run_action(
         notes.append("I couldn't DM them about it")
 
     # The message is only the target's if the user ID wasn't changed to someone else in the modal
-    if source.author.id == target_id and await cog.config.guild(moderator.guild).delete_message():
+    if source is not None and source.author.id == target_id and await cog.config.guild(moderator.guild).delete_message():
         try:
             await source.delete()
         except discord.NotFound:

@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, Optional, Tuple, Union
 
 import discord
 from discord import app_commands
@@ -7,7 +7,7 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import box, humanize_timedelta, pagify
 
-from .actions import ACTIONS, MAX_REASONS, TITLES, denial, parse_reasons
+from .actions import ACTIONS, MAX_REASONS, TITLES, anchor_message, denial, parse_reasons
 from .views import ActionModal
 from .viewuser import ViewUserModal, can_view, get_defender
 
@@ -33,15 +33,15 @@ def reason_action(argument: str) -> str:
 
 
 class Brutus(commands.Cog):
-    """Warn, mute, kick and ban from a message's Apps menu
+    """Warn, mute, kick, ban and view users from the Apps menu
 
-    Right click (or long press) a message > Apps > Warn / Mute / Kick / Ban opens a form
-    with the author's ID, a preset reason and optional details. The action runs like the
-    matching Red command: same DM (if turned on in that cog), same modlog case. The
-    message is deleted afterwards.
+    Right click (or long press) a message or a user > Apps > Warn / Mute / Kick / Ban opens
+    a form with their ID, a preset reason and optional details. The action runs like the
+    matching Red command: same DM (if turned on in that cog), same modlog case. When it's
+    taken from a message, the message is deleted afterwards.
 
-    Apps > View User shows the author's modlog cases, recent messages (from Defender's
-    cache) or user info, only to you.
+    Apps > View User shows their modlog cases, recent messages (from Defender's cache)
+    or user info, only to you.
     """
 
     __version__ = "1.0.0"
@@ -51,13 +51,16 @@ class Brutus(commands.Cog):
         self.config = Config.get_conf(self, identifier=0xB2075, force_registration=True)
         self.config.register_guild(reasons={}, delete_message=True)
 
-        self.menus: Dict[str, app_commands.ContextMenu] = {}
-        for action, name in (*TITLES.items(), ("view", "View User")):
-            menu = app_commands.ContextMenu(name=name, callback=getattr(self, f"_menu_{action}"))
-            menu.default_permissions = DEFAULT_PERMISSIONS[action]
-            menu.guild_only = True
-            menu.allowed_contexts = app_commands.AppCommandContext(guild=True)
-            self.menus[action] = menu
+        # The same five entries in the Apps menu of messages and of users. Discord keys them by name and
+        # type, so both can be called "Warn" etc. Each type has its own limit of 5 per bot
+        self.menus: Dict[Tuple[str, str], app_commands.ContextMenu] = {}
+        for kind in ("message", "user"):
+            for entry, name in (*TITLES.items(), ("view", "View User")):
+                menu = app_commands.ContextMenu(name=name, callback=self._make_callback(kind, entry))
+                menu.default_permissions = DEFAULT_PERMISSIONS[entry]
+                menu.guild_only = True
+                menu.allowed_contexts = app_commands.AppCommandContext(guild=True)
+                self.menus[(kind, entry)] = menu
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         return f"{super().format_help_for_context(ctx)}\n\nVersion: {self.__version__}"
@@ -78,49 +81,50 @@ class Brutus(commands.Cog):
     #   Apps menu
     #
 
-    async def _menu_warn(self, inter: discord.Interaction, message: discord.Message):
-        await self._open(inter, "warn", message)
+    def _make_callback(self, kind: str, entry: str):
+        """The callback of an Apps menu entry. discord.py reads its annotation to know if it's for messages or users"""
+        if kind == "message":
 
-    async def _menu_mute(self, inter: discord.Interaction, message: discord.Message):
-        await self._open(inter, "mute", message)
+            async def on_message(inter: discord.Interaction, message: discord.Message):
+                if message.webhook_id is not None:
+                    return await inter.response.send_message(
+                        "That message was sent by a webhook, so there's no user to act on.", ephemeral=True
+                    )
+                await self._dispatch(inter, entry, message.author.id, message)
 
-    async def _menu_kick(self, inter: discord.Interaction, message: discord.Message):
-        await self._open(inter, "kick", message)
+            return on_message
 
-    async def _menu_ban(self, inter: discord.Interaction, message: discord.Message):
-        await self._open(inter, "ban", message)
+        async def on_user(inter: discord.Interaction, user: Union[discord.Member, discord.User]):
+            await self._dispatch(inter, entry, user.id, None)
 
-    async def _menu_view(self, inter: discord.Interaction, message: discord.Message):
+        return on_user
+
+    async def _dispatch(self, inter: discord.Interaction, entry: str, target_id: int, source: Optional[discord.Message]):
         if inter.guild is None or not isinstance(inter.user, discord.Member):
             return await inter.response.send_message("This only works in servers.", ephemeral=True)
+        if entry == "view":
+            await self._open_view(inter, target_id, source)
+        else:
+            await self._open(inter, entry, target_id, source)
+
+    async def _open_view(self, inter: discord.Interaction, target_id: int, source: Optional[discord.Message]):
         if await self.bot.cog_disabled_in_guild(self, inter.guild):
             return await inter.response.send_message("Brutus is disabled in this server.", ephemeral=True)
         if not await can_view(self.bot, inter.user):
             return await inter.response.send_message(
                 "Only staff members are allowed to view user details. You sure don't look like one.", ephemeral=True
             )
-        if message.webhook_id is not None:
-            return await inter.response.send_message(
-                "That message was sent by a webhook, so there's no user to look up.", ephemeral=True
-            )
-        await inter.response.send_modal(ViewUserModal(self, message.author.id))
+        await inter.response.send_modal(ViewUserModal(self, target_id, from_message=source is not None))
 
-    async def _open(self, inter: discord.Interaction, action: str, message: discord.Message):
-        if inter.guild is None or not isinstance(inter.user, discord.Member):
-            return await inter.response.send_message("This only works in servers.", ephemeral=True)
-        if message.webhook_id is not None:
-            return await inter.response.send_message(
-                "That message was sent by a webhook, so there's no user to take action on.", ephemeral=True
-            )
-
+    async def _open(self, inter: discord.Interaction, action: str, target_id: int, source: Optional[discord.Message]):
         # Same checks the modal runs on submit, so nobody fills it in just to be denied
-        reason_denied = await denial(self, inter.user, action, message.author.id, message)
+        reason_denied = await denial(self, inter.user, action, target_id, anchor_message(inter, source))
         if reason_denied:
             return await inter.response.send_message(reason_denied, ephemeral=True)
 
         guild = inter.guild
         reasons = (await self.config.guild(guild).reasons()).get(action, [])
-        kwargs = {}
+        kwargs = {"deletes_message": source is not None and await self.config.guild(guild).delete_message()}
         if action == "mute":
             mutes_conf = self.bot.get_cog("Mutes").config.guild(guild)
             kwargs["mute_default"] = await mutes_conf.default_time() or None
@@ -130,7 +134,7 @@ class Brutus(commands.Cog):
             days = await self.bot.get_cog("Mod").config.guild(guild).default_days()
             kwargs["ban_delete_seconds"] = max(0, min(7, days)) * 86400
 
-        await inter.response.send_modal(ActionModal(self, action, message, reasons, **kwargs))
+        await inter.response.send_modal(ActionModal(self, action, target_id, source, reasons, **kwargs))
 
     #
     #   Settings
@@ -148,13 +152,18 @@ class Brutus(commands.Cog):
         guild = ctx.guild
         conf = await self.config.guild(guild).all()
         enabled = await self.bot.list_enabled_app_commands()
-        enabled_menus = [m.name for m in self.menus.values() if m.name in enabled["message"]]
+        enabled_menus = {
+            kind: [m.name for (k, _), m in self.menus.items() if k == kind and m.name in enabled[kind]]
+            for kind in ("message", "user")
+        }
 
         def yes_no(value) -> str:
             return "On" if value else "Off"
 
         lines = [
-            f"Apps menu entries enabled: {', '.join(enabled_menus) or 'None'}",
+            "Apps menu entries enabled:",
+            f"  Messages: {', '.join(enabled_menus['message']) or 'None'}",
+            f"  Users: {', '.join(enabled_menus['user']) or 'None'}",
             f"Delete the targeted message: {yes_no(conf['delete_message'])}",
             "",
             "Preset reasons:",
@@ -197,19 +206,20 @@ class Brutus(commands.Cog):
 
         for page in pagify("\n".join(lines), delims=["\n\n", "\n"]):
             await ctx.send(box(page, lang="yaml"))
-        if len(enabled_menus) < len(self.menus):
+        if sum(map(len, enabled_menus.values())) < len(self.menus):
             await ctx.send(
                 f"To add the missing Apps menu entries, run `{ctx.clean_prefix}slash enablecog brutus` "
-                f"then `{ctx.clean_prefix}slash sync`. Discord allows 5 message entries per bot and Brutus "
-                f"has 5: to keep room for another cog, turn one off with "
-                f"`{ctx.clean_prefix}slash disable \"View User\" message`."
+                f"then `{ctx.clean_prefix}slash sync`. Discord allows 5 message and 5 user entries per bot, "
+                f"and Brutus has 5 of each: to keep room for another cog, turn one off with e.g. "
+                f"`{ctx.clean_prefix}slash disable \"View User\" user`."
             )
 
     @brutusset.command(name="deletemessage")
     async def brutusset_deletemessage(self, ctx: commands.Context, on_or_off: bool):
         """Toggle deleting the targeted message once action is taken (on by default)
 
-        The message is only deleted when the action is taken on its author."""
+        Only applies to actions taken from a message's Apps menu, and only when the
+        action is taken on its author."""
         await self.config.guild(ctx.guild).delete_message.set(on_or_off)
         if on_or_off:
             await ctx.send("The targeted message will be deleted once action is taken.")

@@ -271,12 +271,18 @@ class PagedMenu(ui.View):
 class ViewUserModal(ui.Modal):
     """Asks which user and which of their details to show, then shows them ephemerally"""
 
-    def __init__(self, cog: "Brutus", user_id: int):
+    def __init__(self, cog: "Brutus", user_id: int, *, from_message: bool = True):
         super().__init__(title="View User", timeout=600)
         self.cog = cog
 
         self.target_input = ui.TextInput(default=str(user_id), min_length=15, max_length=21)
-        self.add_item(ui.Label(text="User ID", description="The author of the message.", component=self.target_input))
+        self.add_item(
+            ui.Label(
+                text="User ID",
+                description="The author of the message." if from_message else "The selected user.",
+                component=self.target_input,
+            )
+        )
 
         has_messages = get_defender(cog.bot) is not None
         self.choice = ui.Select(

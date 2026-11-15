@@ -51,9 +51,11 @@ class ActionModal(ui.Modal):
         self,
         cog: "Brutus",
         action: str,
-        source: discord.Message,
+        target_id: int,
+        source: Optional[discord.Message],
         reasons: List[List[str]],
         *,
+        deletes_message: bool = False,
         mute_default: Optional[int] = None,
         mute_needs_duration: bool = False,
         ban_delete_seconds: int = 0,
@@ -61,17 +63,17 @@ class ActionModal(ui.Modal):
         super().__init__(title=f"Quick action: {TITLES[action]}", timeout=600)
         self.cog = cog
         self.action = action
-        self.source = source
+        self.source = source  # The targeted message, None from a user's Apps menu
         self.reasons = reasons[:MAX_REASONS]
 
-        self.target_input = ui.TextInput(default=str(source.author.id), min_length=15, max_length=21)
-        self.add_item(
-            ui.Label(
-                text="User ID",
-                description="The author of the message. Their message is deleted once action is taken.",
-                component=self.target_input,
-            )
-        )
+        if source is None:
+            target_hint = "The selected user."
+        elif deletes_message:
+            target_hint = "The author of the message. Their message is deleted once action is taken."
+        else:
+            target_hint = "The author of the message."
+        self.target_input = ui.TextInput(default=str(target_id), min_length=15, max_length=21)
+        self.add_item(ui.Label(text="User ID", description=target_hint, component=self.target_input))
 
         self.reason_select: Optional[ui.Select] = None
         if self.reasons:
