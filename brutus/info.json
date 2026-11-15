@@ -1,0 +1,15 @@
+{
+  "author": ["Eternalll"],
+  "name": "Brutus",
+  "short": "Warn, mute, kick and ban from a message's Apps menu.",
+  "description": "Right click (or long press) a message > Apps > Warn / Mute / Kick / Ban opens a form with the author's ID, a preset reason and optional details. The action runs like Red's own command: same DM (if turned on in Mod, Mutes or Warnings), same modlog case, and the message is deleted afterwards. Requires the Mod, Mutes and Warnings cogs for their respective actions.",
+  "end_user_data_statement": "This cog does not persistently store data or metadata about users. Warnings, mutes and modlog cases it creates are stored by Red's Warnings and Mutes cogs and Red's modlog.",
+  "install_msg": "Thanks for installing Brutus. Load it, then run `[p]slash enablecog brutus` and `[p]slash sync` to add Warn, Mute, Kick and Ban to the Apps menu of messages. Set preset reasons with `[p]brutusset reasons`, and see everything with `[p]brutusset show`.",
+  "min_bot_version": "3.5.21",
+  "min_python_version": [3, 9, 0],
+  "requirements": [],
+  "tags": ["moderation", "mod", "context menu", "apps", "modal", "warn", "mute", "kick", "ban"],
+  "type": "COG",
+  "hidden": true,
+  "disabled": false
+}
