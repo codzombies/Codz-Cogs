@@ -30,6 +30,8 @@ from redbot.core import commands, modlog
 from redbot.core.utils.chat_formatting import bold
 from redbot.core.utils.mod import get_audit_reason
 
+from .export import capture_ban_export, post_ban_export
+
 if TYPE_CHECKING:
     from .brutus import Brutus
 
@@ -446,6 +448,11 @@ async def run_action(
         return await reply(reason_denied)
 
     target = moderator.guild.get_member(target_id)
+    export, export_note = None, None
+    if action == "ban":
+        # Taken before the ban, so its message deletion can't affect what gets preserved
+        export, export_note = await capture_ban_export(cog, moderator.guild, moderator, target_id)
+
     if action == "warn":
         out = await _warn(cog, inter, moderator, target, reason, points, anchor)
     elif action == "mute":
@@ -464,6 +471,10 @@ async def run_action(
         notes.append(f"Case #{out.case.case_number}")
     if out.dm_failed:
         notes.append("I couldn't DM them about it")
+    if export is not None:
+        export_note = await post_ban_export(cog, moderator.guild, export, target, moderator, reason, out.case)
+    if export_note:
+        notes.append(export_note)
 
     # The message is only the target's if the user ID wasn't changed to someone else in the modal
     if source is not None and source.author.id == target_id and await cog.config.guild(moderator.guild).delete_message():

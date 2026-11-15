@@ -44,12 +44,12 @@ class Brutus(commands.Cog):
     or user info, only to you.
     """
 
-    __version__ = "1.0.0"
+    __version__ = "1.0"
 
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=0xB2075, force_registration=True)
-        self.config.register_guild(reasons={}, delete_message=True)
+        self.config.register_guild(reasons={}, delete_message=True, ban_export=False, ban_export_channel=None)
 
         # The same five entries in the Apps menu of messages and of users. Discord keys them by name and
         # type, so both can be called "Warn" etc. Each type has its own limit of 5 per bot
@@ -157,14 +157,20 @@ class Brutus(commands.Cog):
             for kind in ("message", "user")
         }
 
+        export_channel = guild.get_channel_or_thread(conf["ban_export_channel"] or 0)
+
         def yes_no(value) -> str:
             return "On" if value else "Off"
 
         lines = [
+            f"Brutus version: {self.__version__}",
+            "",
             "Apps menu entries enabled:",
             f"  Messages: {', '.join(enabled_menus['message']) or 'None'}",
             f"  Users: {', '.join(enabled_menus['user']) or 'None'}",
             f"Delete the targeted message: {yes_no(conf['delete_message'])}",
+            f"Ban message export: {yes_no(conf['ban_export'])}"
+            + (f" (to #{export_channel.name})" if export_channel else " (no channel set)"),
             "",
             "Preset reasons:",
         ]
@@ -213,6 +219,43 @@ class Brutus(commands.Cog):
                 f"and Brutus has 5 of each: to keep room for another cog, turn one off with e.g. "
                 f"`{ctx.clean_prefix}slash disable \"View User\" user`."
             )
+
+    @brutusset.command(name="banexport")
+    async def brutusset_banexport(self, ctx: commands.Context, on_or_off: bool):
+        """Toggle exporting a user's cached messages when they're banned from the Apps menu
+
+        The export is taken right before the ban (which can delete their recent messages)
+        and posted with the user, moderator, reason and case number, like
+        `[p]defender messages exportuser`. It needs Defender's message cache.
+        Set the channel with `[p]brutusset banexportchannel`."""
+        channel = None
+        if on_or_off:
+            channel = ctx.guild.get_channel_or_thread(await self.config.guild(ctx.guild).ban_export_channel() or 0)
+            if channel is None:
+                return await ctx.send(f"Set the channel first with `{ctx.clean_prefix}brutusset banexportchannel`.")
+        await self.config.guild(ctx.guild).ban_export.set(on_or_off)
+        if not on_or_off:
+            return await ctx.send("Bans from the Apps menu won't export messages anymore.")
+        text = f"Bans from the Apps menu will export the user's cached messages to {channel.mention}."
+        if get_defender(self.bot) is None:
+            text += " Defender's message cache isn't loaded right now, so there's nothing to export until it is."
+        await ctx.send(text)
+
+    @brutusset.command(name="banexportchannel")
+    async def brutusset_banexportchannel(
+        self, ctx: commands.Context, channel: Union[discord.TextChannel, discord.Thread]
+    ):
+        """Set the channel where bans from the Apps menu export the user's messages
+
+        Anyone who can see this channel can read the exports. Messages from channels the
+        banning moderator can't read are left out, as with `[p]defender messages exportuser`."""
+        perms = channel.permissions_for(ctx.guild.me)
+        if not (perms.send_messages and perms.attach_files):
+            return await ctx.send("I need permission to send messages and attach files in that channel.")
+        await self.config.guild(ctx.guild).ban_export_channel.set(channel.id)
+        enabled = await self.config.guild(ctx.guild).ban_export()
+        tip = "" if enabled else f" Turn it on with `{ctx.clean_prefix}brutusset banexport on`."
+        await ctx.send(f"Ban message exports will be posted in {channel.mention}.{tip}")
 
     @brutusset.command(name="deletemessage")
     async def brutusset_deletemessage(self, ctx: commands.Context, on_or_off: bool):
