@@ -2,7 +2,7 @@
   "author": [
     "Dav", "Eternalll", "Twentysix", "crayyy_zee"
   ],
-  "description": "Fork of Dav-Cogs check cog with extra features. Fuses ``[p]warnings``,``[p]listflags``,``[p]read``,``[p]userinfo``,``[p]def messages user`` and [p]names`` using \"bettermodlog\" for display.",
+  "description": "Fork of Dav-Cogs check cog with extra features. Fuses [p]userinfo, [p]alt get, [p]warnings/[p]read, [p]listflag and [p]def messages user into one command, using \"bettermodlog\" for display.",
   "hidden": false,
   "install_msg": "Thank you for installing check. Make sure the `Warnings` and `Mod` cogs are loaded.",
   "short": "Mod-Check a user",
