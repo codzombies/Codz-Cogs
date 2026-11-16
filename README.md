@@ -5,6 +5,7 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 | Cog | Description |
 | --- | --- |
 | BannedCount | blizzthewolf's bannedcount cog with increased ban list limit from 10,000 to 50,000. |
+| Brutus | Warn, mute, kick, ban and view users from the Apps menu of messages and users. |
 | Check | Dav-Cogs' check cog that combines defender message logs/count, bettermodlog case display, shows users that left the server, runs async, and allows 3 checks per guild.|
 | ComponentsV2Utils | Send rich Discord Components V2 messages from YAML or JSON, similar to embedutils. |
 | GameInviteControl | Monitor and control Discord Rich Presence game invites in your server. Log invite activity, restrict invite usage to specific channels, and manage who can send/receive game invites. |
