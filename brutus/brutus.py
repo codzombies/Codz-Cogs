@@ -41,10 +41,10 @@ class Brutus(commands.Cog):
     taken from a message, the message is deleted afterwards.
 
     Apps > View User shows their modlog cases, recent messages (from Defender's cache)
-    or user info, only to you.
+    or user info (or all three with Check, like [p]check), only to you.
     """
 
-    __version__ = "1.0"
+    __version__ = "1.1"
 
     def __init__(self, bot: Red):
         self.bot = bot

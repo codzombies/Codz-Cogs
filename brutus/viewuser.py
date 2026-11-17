@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import importlib
 import logging
@@ -19,7 +20,15 @@ VIEW_OPTIONS = (
     ("modlog", "Modlog", "📜", "The user's modlog cases"),
     ("messages", "Recent Messages", "💬", "Messages cached by Defender, like [p]defender messages user"),
     ("info", "User Info", "👤", "Account and server details"),
+    ("check", "Check", "🔍", "All of the above at once, like [p]check"),
 )
+
+# What gets added after "isn't in the server right now." on each kind of result
+ABSENT_NOTES = {
+    "modlog": "",
+    "messages": " Showing whatever is still cached from before they left.",
+    "info": " Showing their Discord account only: no server details are available.",
+}
 
 CASES_PER_PAGE = 6
 CASE_REASON_MAX = 800  # 6 fields of this stay under an embed's 6000 characters
@@ -304,28 +313,44 @@ class ViewUserModal(ui.Modal):
 
         await inter.response.defer(ephemeral=True, thinking=True)
         choice = self.choice.values[0]
-        if choice == "modlog":
-            pages = await _view_modlog(inter, user_id)
-        elif choice == "messages":
-            pages = await _view_messages(inter, user_id)
+        if choice == "check":
+            # Same order as [p]check: user info, then modlog, then recent messages, fetched concurrently
+            kinds = ["info", "modlog"]
+            if get_defender(self.cog.bot) is not None:
+                kinds.append("messages")
         else:
-            pages = [await _view_info(inter, user_id)]
+            kinds = [choice]
+        results = await asyncio.gather(*(self._fetch(inter, kind, user_id) for kind in kinds))
 
-        # Errors (❌) already say what's wrong. Anything else gets a heads-up that the user isn't here,
-        # on every page so it doesn't disappear when flipping through them
-        is_error = isinstance(pages[0], str) and pages[0].startswith("❌")
-        if not is_error and inter.guild.get_member(user_id) is None:
-            notice = f"ℹ️ <@{user_id}> (`{user_id}`) isn't in the server right now." + {
-                "modlog": "",
-                "messages": " Showing whatever is still cached from before they left.",
-                "info": " Showing their Discord account only: no server details are available.",
-            }[choice]
-            for i, page in enumerate(pages):
-                if isinstance(page, discord.Embed):
-                    page.description = f"{notice}\n\n{page.description}" if page.description else notice
-                else:
-                    pages[i] = f"{notice}\n{page}"
+        absent = inter.guild.get_member(user_id) is None
+        for kind, pages in zip(kinds, results):
+            if absent:
+                self._add_absent_notice(pages, kind, user_id)
+            await self._send(inter, pages)
 
+    @staticmethod
+    async def _fetch(inter: discord.Interaction, kind: str, user_id: int) -> List[Page]:
+        if kind == "modlog":
+            return await _view_modlog(inter, user_id)
+        if kind == "messages":
+            return await _view_messages(inter, user_id)
+        return [await _view_info(inter, user_id)]
+
+    @staticmethod
+    def _add_absent_notice(pages: List[Page], kind: str, user_id: int):
+        """A heads-up that the user isn't here, on every page so it doesn't disappear when flipping
+        through them. Errors (❌) already say what's wrong"""
+        if isinstance(pages[0], str) and pages[0].startswith("❌"):
+            return
+        notice = f"ℹ️ <@{user_id}> (`{user_id}`) isn't in the server right now.{ABSENT_NOTES[kind]}"
+        for i, page in enumerate(pages):
+            if isinstance(page, discord.Embed):
+                page.description = f"{notice}\n\n{page.description}" if page.description else notice
+            else:
+                pages[i] = f"{notice}\n{page}"
+
+    @staticmethod
+    async def _send(inter: discord.Interaction, pages: List[Page]):
         none = discord.AllowedMentions.none()
         page = pages[0]
         kwargs = {"embed": page} if isinstance(page, discord.Embed) else {"content": page}
