@@ -1,3 +1,7 @@
 # Python bytecode caches
 __pycache__/
 *.py[cod]
+
+# Local AI assistant notes (internal, never publish)
+CLAUDE.md
+.claude/
