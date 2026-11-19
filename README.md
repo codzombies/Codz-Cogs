@@ -7,7 +7,7 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 | BannedCount | blizzthewolf's bannedcount cog with increased ban list limit from 10,000 to 50,000. |
 | Brutus | Warn, mute, kick, ban and view users from the Apps menu of messages and users. |
 | Check | Dav-Cogs' check cog that combines defender message logs/count, bettermodlog case display, shows users that left the server, runs async, and allows 3 checks per guild.|
-| ComponentsV2Utils | Send rich Discord Components V2 messages from YAML or JSON, similar to embedutils. |
+| ComponentsV2Utils | Send, store, download and export Discord Components V2 messages from YAML or JSON, similar to embedutils. Converts embeds and exports website link previews. |
 | GameInviteControl | Monitor and control Discord Rich Presence game invites in your server. Log invite activity, restrict invite usage to specific channels, and manage who can send/receive game invites. |
 | IdentifyActivity | Mod or Admins can search (with paging support) users currently on certain activities in the server. |
 | Maven | Privileged Access Management (PAM) for your server. Allow role checkouts instead of keeping dangerous permissions 24/7. |

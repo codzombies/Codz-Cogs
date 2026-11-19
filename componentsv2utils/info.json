@@ -1,10 +1,11 @@
 {
     "author": ["Eternalll", "AAA3A"],
     "name": "ComponentsV2Utils",
-    "short": "Send rich Discord Components V2 messages from YAML or JSON.",
-    "description": "A Red-DiscordBot cog to send, store, and post Discord Components V2 layout messages. Supports TextDisplay (markdown), Separators, Sections (with thumbnail/button accessories), MediaGalleries, and Containers — defined in clean YAML or JSON. No classic embeds required.",
+    "short": "Send, store and export Discord Components V2 messages from YAML or JSON.",
+    "description": "A Red-DiscordBot cog to send, edit, store, download and export Discord Components V2 layout messages written in YAML or JSON (raw Discord payloads work too). Supports text, separators, sections with thumbnail/button accessories, media galleries, files and attachments, link-button rows and containers, with validation against Discord's limits. Can copy or convert existing messages (embeds become containers) and export layouts as website link previews (component embeds).",
     "tags": [
         "components",
+        "components v2",
         "layout",
         "embed",
         "yaml",
@@ -13,10 +14,12 @@
         "separator",
         "section",
         "media gallery",
-        "container"
+        "container",
+        "buttons",
+        "link preview"
     ],
     "requirements": ["PyYAML"],
     "min_bot_version": "3.5.21",
     "min_python_version": [3, 9, 0],
-    "end_user_data_statement": "This cog does not persistently store data or metadata about users."
+    "end_user_data_statement": "This cog stores the user ID of whoever saves a stored layout, to show its author. It does not store any other data about users."
 }
