@@ -28,7 +28,7 @@ from redbot.core.utils.mod import is_admin_or_superior
 
 log = logging.getLogger("red.maven")
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 NAME_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
 DUR_RE = re.compile(r"(\d+)(s|m|h)")
@@ -204,8 +204,18 @@ class Maven(commands.Cog):
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
         for gid, members in (await self.config.all_members()).items():
-            if user_id in members:
-                await self.config.member_from_ids(gid, user_id).clear()
+            if user_id not in members:
+                continue
+            # Revoke before forgetting: otherwise a user could run `mydata forgetme`
+            # to erase the expiry record and keep a privileged role indefinitely.
+            guild = self.bot.get_guild(gid)
+            member = guild.get_member(user_id) if guild else None
+            if member is not None:
+                done, failed = await self._checkin_member(member, "Data deletion request")
+                if failed:
+                    log.warning("maven: could not revoke %s checkout(s) from %s in %s before "
+                                "data deletion; remove them manually.", failed, user_id, gid)
+            await self.config.member_from_ids(gid, user_id).clear()
 
     # ----------------------------------------------------------------- helpers
     @staticmethod
@@ -225,23 +235,40 @@ class Maven(commands.Cog):
             return f"I can't hand out {role.mention}: it is at or above my highest role."
         return None
 
+    @staticmethod
+    def _author_hierarchy_error(ctx: commands.Context, role: discord.Role) -> Optional[str]:
+        if ctx.author.id != ctx.guild.owner_id and role >= ctx.author.top_role:
+            return f"You can't configure {role.mention}: it is at or above your highest role."
+        return None
+
     def _hierarchy_error(self, ctx: commands.Context, role: discord.Role) -> Optional[str]:
         """Return an error string if `role` can't be configured by the invoker."""
         if (e := self._bot_can_grant(ctx.guild, role)) is not None:
             return e
-        if ctx.author.id != ctx.guild.owner_id and role >= ctx.author.top_role:
-            return f"You can't configure {role.mention}: it is at or above your highest role."
-        return None
+        return self._author_hierarchy_error(ctx, role)
+
+    def _entry_guard(self, ctx: commands.Context, entry: dict) -> Optional[str]:
+        """Stop admins from editing checkouts for roles at/above their own top role.
+
+        Without this, a lower-ranked admin could add their own role as a requirement
+        on a higher checkout and grant themselves that role.
+        """
+        role = ctx.guild.get_role(entry["role_id"])
+        if role is None:
+            return None
+        return self._author_hierarchy_error(ctx, role)
+
+    @staticmethod
+    def _meets_requirements(member: discord.Member, entry: dict) -> bool:
+        reqs = set(entry.get("requires", []))
+        return bool(reqs & {r.id for r in member.roles})  # empty requirements = deny
 
     def _eligible(self, member: discord.Member, entry: dict) -> Optional[discord.Role]:
         """Return the role if this member may check this entry out right now."""
         role = member.guild.get_role(entry["role_id"])
         if role is None or self._bot_can_grant(member.guild, role) is not None:
             return None
-        reqs = set(entry.get("requires", []))
-        if not reqs:  # default deny
-            return None
-        if not reqs & {r.id for r in member.roles}:
+        if not self._meets_requirements(member, entry):
             return None
         if role in member.roles:
             return None
@@ -331,7 +358,15 @@ class Maven(commands.Cog):
         view = CheckoutView(self, ctx, options, bool(active), data["menu_timeout"])
         embed = self._panel_embed(ctx.author, data, active, available, at_limit)
         self._open_panels.add(key)
-        view.message = await ctx.send(embed=embed, view=view)
+        try:
+            view.message = await ctx.send(embed=embed, view=view)
+        except discord.HTTPException:
+            # e.g. a stored emoji/image the API rejects; don't leave the user locked out.
+            self._open_panels.discard(key)
+            view.stop()
+            log.exception("Failed to send maven checkout menu in guild %s", ctx.guild.id)
+            await ctx.send(err("I couldn't display the checkout menu. An admin should check "
+                               "the configured emojis and menu image."))
 
     async def _deny_unauthorized(self, ctx: commands.Context, data: dict):
         """Silently ignore the user; log the attempt (max one per user per minute)."""
@@ -400,55 +435,74 @@ class Maven(commands.Cog):
 
             now = int(time.time())
             expires = now + int(entry["time"])
-            try:
-                await member.add_roles(role, reason=f"maven: checkout '{name}' for {dur(entry['time'])}")
-            except (discord.Forbidden, discord.HTTPException):
-                log.exception("Failed to grant %s to %s", role.id, member.id)
-                return await deny("I couldn't grant that role. Check my permissions and role position.")
+            # Record first: if we crash after granting, the expiry loop still removes it.
             async with conf.active() as act:
                 act[name] = {"role_id": role.id, "expires": expires, "checked_out": now}
+            try:
+                await member.add_roles(role, reason=f"maven: checkout '{name}' for {dur(entry['time'])}")
+            except discord.HTTPException:
+                log.exception("Failed to grant %s to %s", role.id, member.id)
+                async with conf.active() as act:
+                    act.pop(name, None)
+                return await deny("I couldn't grant that role. Check my permissions and role position.")
 
         view.finish()
-        await interaction.edit_original_response(
-            embed=discord.Embed(
-                title="Access checked out",
-                description=(
-                    f"{role.mention} has been checked out. It will be removed "
-                    f"<t:{expires}:R>, or sooner if you check in."
-                ),
-                color=discord.Colour.green(),
-            ),
-            view=None,
-        )
+        # Audit log first so a failure to edit the menu can't skip it.
         await self._notify_checkout(guild, member, role, name, entry, expires, data)
+        try:
+            await interaction.edit_original_response(
+                embed=discord.Embed(
+                    title="Access checked out",
+                    description=(
+                        f"{role.mention} has been checked out. It will be removed "
+                        f"<t:{expires}:R>, or sooner if you check in."
+                    ),
+                    color=discord.Colour.green(),
+                ),
+                view=None,
+            )
+        except discord.HTTPException:
+            pass
 
     async def _do_checkin_all(self, view: CheckoutView, interaction: discord.Interaction):
         await interaction.response.defer()
         member: discord.Member = interaction.user
-        count = await self._checkin_member(member, "Manual check-in")
+        done, failed = await self._checkin_member(member, "Manual check-in")
         view.finish()
-        await interaction.edit_original_response(
-            embed=discord.Embed(
-                description="Access has been checked back in." if count else "You have no active access.",
-                color=discord.Colour.green() if count else discord.Colour.light_grey(),
-            ),
-            view=None,
-        )
+        if failed:
+            desc, colour = self._CHECKIN_FAILED, discord.Colour.red()
+        elif done:
+            desc, colour = "Access has been checked back in.", discord.Colour.green()
+        else:
+            desc, colour = "You have no active access.", discord.Colour.light_grey()
+        try:
+            await interaction.edit_original_response(
+                embed=discord.Embed(description=desc, color=colour), view=None
+            )
+        except discord.HTTPException:
+            pass
 
-    async def _checkin_member(self, member: discord.Member, reason: str) -> int:
-        active = await self.config.member(member).active()
-        n = 0
-        for name, rec in list(active.items()):
-            if await self._revoke(member.guild, member, name, rec, reason):
-                n += 1
-        return n
+    _CHECKIN_FAILED = ("Some roles couldn't be removed. They will be retried automatically "
+                       "when they expire. Ask an admin to check my permissions.")
+
+    async def _checkin_member(self, member: discord.Member, reason: str) -> Tuple[int, int]:
+        """Revoke all of a member's checkouts. Returns (revoked, failed)."""
+        done = failed = 0
+        async with self._lock:
+            active = await self.config.member(member).active()
+            for name, rec in list(active.items()):
+                if await self._revoke(member.guild, member, name, rec, reason):
+                    done += 1
+                else:
+                    failed += 1
+        return done, failed
 
     async def _revoke(self, guild, member: discord.Member, name: str, rec: dict, reason: str) -> bool:
         role = guild.get_role(rec["role_id"])
         if role is not None and role in member.roles:
             try:
                 await member.remove_roles(role, reason=f"maven: {reason} ('{name}')")
-            except (discord.Forbidden, discord.HTTPException):
+            except discord.HTTPException:
                 log.warning("Failed to remove %s from %s", rec["role_id"], member.id)
                 return False
         async with self.config.member(member).active() as act:
@@ -519,29 +573,63 @@ class Maven(commands.Cog):
     # ------------------------------------------------------------ expiry loop
     @tasks.loop(seconds=10)
     async def expiry_loop(self):
-        now = time.time()
-        for gid, members in (await self.config.all_members()).items():
+        # Any exception escaping a tasks.loop stops it for good, which would mean
+        # privileged roles never expire. Isolate failures per member.
+        try:
+            all_members = await self.config.all_members()
+        except Exception:
+            log.exception("maven: failed to read member data")
+            return
+        for gid, members in all_members.items():
             guild = self.bot.get_guild(gid)
-            if guild is None:
+            if guild is None or guild.unavailable:
                 continue
             for uid, mdata in members.items():
-                active = mdata.get("active") or {}
-                if not active:
+                if not mdata.get("active"):
                     continue
-                member = guild.get_member(uid)
-                conf = self.config.member_from_ids(gid, uid)
-                for name, rec in list(active.items()):
-                    role = guild.get_role(rec["role_id"])
-                    # Member left, role deleted, or role removed by hand: just drop the record.
-                    if member is None or role is None or role not in member.roles:
-                        async with conf.active() as act:
-                            act.pop(name, None)
+                try:
+                    await self._process_member_expiry(guild, uid)
+                except Exception:
+                    log.exception("maven: expiry check failed for %s in %s", uid, gid)
+
+    async def _process_member_expiry(self, guild: discord.Guild, uid: int) -> None:
+        conf = self.config.member_from_ids(guild.id, uid)
+        member = guild.get_member(uid)
+        if member is None:
+            # Not cached doesn't mean gone: only drop records once Discord confirms it.
+            try:
+                member = await guild.fetch_member(uid)
+            except discord.NotFound:
+                await conf.active.clear()
+                return
+            except discord.HTTPException:
+                return  # try again next tick
+        entries = await self.config.guild(guild).roles()
+        async with self._lock:
+            # Re-read under the lock: the snapshot may be stale if the member
+            # checked in / out again since all_members() was read.
+            active = await conf.active()
+            now = time.time()
+            for name, rec in list(active.items()):
+                role = guild.get_role(rec["role_id"])
+                # Role deleted, or removed by hand: just drop the record.
+                if role is None or role not in member.roles:
+                    async with conf.active() as act:
+                        act.pop(name, None)
+                    continue
+                if rec["expires"] <= now:
+                    reason = "Checkout expired"
+                else:
+                    entry = entries.get(name)
+                    if (entry is not None and entry["role_id"] == rec["role_id"]
+                            and not self._meets_requirements(member, entry)):
+                        reason = "Eligibility lost (no longer holds a required role)"
+                    else:
                         continue
-                    if rec["expires"] <= now:
-                        if not await self._revoke(guild, member, name, rec, "Checkout expired"):
-                            async with conf.active() as act:  # retry in a minute
-                                if name in act:
-                                    act[name]["expires"] = now + 60
+                if not await self._revoke(guild, member, name, rec, reason):
+                    async with conf.active() as act:  # retry in a minute
+                        if name in act:
+                            act[name]["expires"] = min(act[name]["expires"], now + 60)
 
     @expiry_loop.before_loop
     async def _before_loop(self):
@@ -564,8 +652,13 @@ class Maven(commands.Cog):
     @maven.command(name="checkin")
     async def maven_checkin(self, ctx: commands.Context):
         """Check in (remove) all of your checked-out roles."""
-        n = await self._checkin_member(ctx.author, "Manual check-in")
-        await ctx.send(ok("Access has been checked back in.") if n else err("You have no active access."))
+        done, failed = await self._checkin_member(ctx.author, "Manual check-in")
+        if failed:
+            await ctx.send(err(self._CHECKIN_FAILED))
+        elif done:
+            await ctx.send(ok("Access has been checked back in."))
+        else:
+            await ctx.send(err("You have no active access."))
 
     @maven.command(name="status")
     async def maven_status(self, ctx: commands.Context):
@@ -611,10 +704,49 @@ class Maven(commands.Cog):
         if (e := self._hierarchy_error(ctx, role)) is not None:
             return await ctx.send(err(e))
 
-        flags_label = getattr(flags, "label", None)
-        flags_desc = getattr(flags, "description", None)
-        flags_emoji = getattr(flags, "emoji", None)
-        flags_time = getattr(flags, "time", None)
+        def clearable(v):
+            return None if v.strip().lower() in ("none", "clear") else v.strip()
+
+        # Validate everything before touching config: returning inside the
+        # `async with` below would still persist partial edits.
+        updates = {}
+        if flags is not None and flags.label is not None:
+            updates["label"] = clearable(flags.label)
+            if updates["label"] and len(updates["label"]) > LABEL_MAX:
+                return await ctx.send(err(f"Label is max {LABEL_MAX} characters."))
+        if flags is not None and flags.description is not None:
+            updates["description"] = clearable(flags.description)
+            if updates["description"] and len(updates["description"]) > DESC_MAX:
+                return await ctx.send(err(f"Description is max {DESC_MAX} characters."))
+        if flags is not None and flags.emoji is not None:
+            val = clearable(flags.emoji)
+            if val:
+                pe = discord.PartialEmoji.from_str(val)
+                if pe.id:
+                    if self.bot.get_emoji(pe.id) is None:
+                        return await ctx.send(err("I can't use that custom emoji (I must share a server with it)."))
+                elif len(val) > 16 or all(c.isascii() for c in val) or any(
+                    c.isascii() and c not in "#*0123456789" for c in val
+                ):
+                    # PartialEmoji.from_str treats any plain text as "unicode";
+                    # an invalid emoji would make Discord reject the whole menu.
+                    return await ctx.send(err("That doesn't look like a valid emoji."))
+                val = str(pe)
+            updates["emoji"] = val
+        if flags is not None and flags.time is not None:
+            try:
+                updates["time"] = parse_duration(flags.time)
+            except commands.BadArgument as exc:
+                return await ctx.send(err(str(exc)))
+
+        existing = (await self.config.guild(ctx.guild).roles()).get(name)
+        if existing is not None:
+            if (e := self._entry_guard(ctx, existing)) is not None:
+                return await ctx.send(err(e))
+            if role.id in existing.get("requires", []):
+                return await ctx.send(err(f"{role.mention} is a requirement of `{name}`; "
+                                          "a role can't be its own requirement."),
+                                      allowed_mentions=discord.AllowedMentions.none())
 
         async with self.config.guild(ctx.guild).roles() as roles:
             entry = roles.get(name) or {
@@ -622,31 +754,7 @@ class Maven(commands.Cog):
                 "emoji": None, "requires": [], "time": 15 * 60,
             }
             entry["role_id"] = role.id
-
-            def clearable(v):
-                return None if v.strip().lower() in ("none", "clear") else v.strip()
-
-            if flags_label is not None:
-                entry["label"] = clearable(flags_label)
-                if entry["label"] and len(entry["label"]) > LABEL_MAX:
-                    return await ctx.send(err(f"Label is max {LABEL_MAX} characters."))
-            if flags_desc is not None:
-                entry["description"] = clearable(flags_desc)
-                if entry["description"] and len(entry["description"]) > DESC_MAX:
-                    return await ctx.send(err(f"Description is max {DESC_MAX} characters."))
-            if flags_emoji is not None:
-                val = clearable(flags_emoji)
-                if val:
-                    pe = discord.PartialEmoji.from_str(val)
-                    if not (pe.id or pe.is_unicode_emoji()):
-                        return await ctx.send(err("That doesn't look like a valid emoji."))
-                    val = str(pe)
-                entry["emoji"] = val
-            if flags_time is not None:
-                try:
-                    entry["time"] = parse_duration(flags_time)
-                except commands.BadArgument as exc:
-                    return await ctx.send(err(str(exc)))
+            entry.update(updates)
             roles[name] = entry
 
         msg = ok(f"Checkout `{name}` set for {role.mention} ({dur(entry['time'])}).")
@@ -677,6 +785,8 @@ class Maven(commands.Cog):
             entry = cfg.get(name)
             if entry is None:
                 return await ctx.send(err(f"No checkout named `{name}`."))
+            if (e := self._entry_guard(ctx, entry)) is not None:
+                return await ctx.send(err(e))
             bad = [r for r in roles if r.is_default() or r.id == entry["role_id"]]
             if bad:
                 return await ctx.send(err("Requirements can't be @everyone or the checkout role itself."))
@@ -698,6 +808,7 @@ class Maven(commands.Cog):
         """Remove one or more roles from the requirements of `name`.
 
         If the last requirement is removed, nobody can check the role out.
+        Members who no longer hold any required role lose active checkouts of it.
         """
         name = name.lower()
         if not roles:
@@ -706,6 +817,8 @@ class Maven(commands.Cog):
             entry = cfg.get(name)
             if entry is None:
                 return await ctx.send(err(f"No checkout named `{name}`."))
+            if (e := self._entry_guard(ctx, entry)) is not None:
+                return await ctx.send(err(e))
             current = set(entry["requires"])
             removed = [r for r in roles if r.id in current]
             if not removed:
@@ -731,11 +844,16 @@ class Maven(commands.Cog):
 
     @sm_requirement.command(name="clear")
     async def sm_requirement_clear(self, ctx: commands.Context, name: str):
-        """Remove all requirements from `name` (nobody can then check it out)."""
+        """Remove all requirements from `name`.
+
+        Nobody can then check it out, and active checkouts of it are revoked.
+        """
         name = name.lower()
         async with self.config.guild(ctx.guild).roles() as cfg:
             if name not in cfg:
                 return await ctx.send(err(f"No checkout named `{name}`."))
+            if (e := self._entry_guard(ctx, cfg[name])) is not None:
+                return await ctx.send(err(e))
             cfg[name]["requires"] = []
         await ctx.send(ok(f"Cleared requirements for `{name}`."))
 
@@ -744,8 +862,11 @@ class Maven(commands.Cog):
         """Remove a role checkout. Active checkouts still expire normally."""
         name = name.lower()
         async with self.config.guild(ctx.guild).roles() as cfg:
-            if cfg.pop(name, None) is None:
+            if name not in cfg:
                 return await ctx.send(err(f"No checkout named `{name}`."))
+            if (e := self._entry_guard(ctx, cfg[name])) is not None:
+                return await ctx.send(err(e))
+            del cfg[name]
         await ctx.send(ok(f"Removed checkout `{name}`. Existing checkouts will still be checked in."))
 
     @setmaven.command(name="list")
@@ -847,6 +968,8 @@ class Maven(commands.Cog):
     @sm_notify.command(name="role")
     async def sm_notify_role(self, ctx, role: Optional[discord.Role] = None):
         """Set the role to notify (omit to clear)."""
+        if role is not None and role.is_default():
+            return await ctx.send(err("The notify role can't be @everyone."))
         await self.config.guild(ctx.guild).notify_role.set(role.id if role else None)
         await ctx.send(ok(f"Notify role {'set to ' + role.mention if role else 'cleared'}."),
                        allowed_mentions=discord.AllowedMentions.none())
@@ -936,11 +1059,12 @@ class Maven(commands.Cog):
     async def sm_menu_timeout(self, ctx, duration: str):
         """How long the menu stays usable before its options become unavailable (15s-5m)."""
         raw = duration.lower().replace(" ", "")
-        try:
-            seconds = int(raw) if raw.isdigit() else sum(
-                int(m.group(1)) * {"s": 1, "m": 60, "h": 3600}[m.group(2)] for m in DUR_RE.finditer(raw)
-            )
-        except ValueError:
+        matches = list(DUR_RE.finditer(raw))
+        if raw.isdigit():
+            seconds = int(raw)
+        elif matches and "".join(m.group(0) for m in matches) == raw:
+            seconds = sum(int(m.group(1)) * {"s": 1, "m": 60, "h": 3600}[m.group(2)] for m in matches)
+        else:
             seconds = 0
         if not 15 <= seconds <= 300:
             return await ctx.send(err("Use a value between `15s` and `5m` (bare numbers are seconds)."))
