@@ -26,7 +26,7 @@ def chunks(l: List[_T], n: int):
 class Check(commands.Cog):
     """Check"""
 
-    __version__ = "2.4.0"
+    __version__ = "2.4.1"
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         # Thanks Sinbad! And Trusty in whose cogs I found this.
@@ -260,8 +260,12 @@ class Check(commands.Cog):
             text_unauthorized = "[You are not authorized to access that channel]"
             _log = []
 
+            def fmt_ts(dt) -> str:
+                # Match Defender: host-local time with the day, since the cache spans days
+                return dt.astimezone().strftime("%m/%d %H:%M:%S")
+
             for m in messages:
-                ts = m.created_at.strftime("%H:%M:%S")
+                ts = fmt_ts(m.created_at)
                 channel = ctx.guild.get_channel(m.channel_id) or ctx.guild.get_thread(m.channel_id)
 
                 if channel:
@@ -277,7 +281,7 @@ class Check(commands.Cog):
                     _log.append(f"[{ts}]({channel_name})[{entry}] {content}")
                     for edit in m.edits:
                         entry -= 1
-                        ts_edit = edit.edited_at.strftime("%H:%M:%S")
+                        ts_edit = fmt_ts(edit.edited_at)
                         content_edit = edit.content if requester_can_rm else text_unauthorized
                         _log.append(f"[{ts_edit}]({channel_name})[{entry}] {content_edit}")
                 else:
