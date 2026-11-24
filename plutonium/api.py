@@ -11,6 +11,8 @@ Rate limiting / caching policy (per the API's "Rate limits and caching" notes):
     switch to the paginated /servers listing, which is fewer requests.
   * HTTP 429 / 5xx / network errors trigger exponential back-off (honouring
     Retry-After), during which no requests are made at all.
+  * Request timeouts are only logged once TIMEOUT_LOG_AFTER happen in a row,
+    since an occasional slow response is normal and not worth a warning.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ BACKOFF_START = 30.0
 BACKOFF_MAX = 900.0
 OFFLINE_AFTER_MISSES = 2      # consecutive "not listed" results before a known server is shown offline
 CACHE_PRUNE_AGE = 3600.0
+TIMEOUT_LOG_AFTER = 3         # consecutive timeouts before they're logged
 
 _ADDRESS_RE = re.compile(r"^(?P<host>[a-z0-9.-]+):(?P<port>\d{1,5})$")
 
@@ -92,6 +95,8 @@ class GameServeClient:
         self._last_request = 0.0
         self._backoff = 0.0
         self._backoff_until = 0.0
+        self._timeouts = 0            # consecutive timed-out requests
+        self._failure_logged = False
         self.last_success: Optional[float] = None  # wall-clock (time.time())
         self.last_error: Optional[str] = None
 
@@ -123,15 +128,25 @@ class GameServeClient:
         ttl = directives.get("s-maxage", directives.get("max-age", MIN_TTL))
         return max(MIN_TTL, ttl)
 
-    def _fail(self, reason: str, retry_after: Optional[float] = None) -> APIError:
+    def _fail(
+        self, reason: str, retry_after: Optional[float] = None, timeout: bool = False
+    ) -> APIError:
         self._backoff = min(BACKOFF_MAX, max(BACKOFF_START, self._backoff * 2))
         delay = max(self._backoff, retry_after or 0.0)
         self._backoff_until = time.monotonic() + delay
         self.last_error = f"{reason} (backing off {int(delay)}s)"
-        log.warning("gameserve.rs request failed: %s", self.last_error)
+        self._timeouts = self._timeouts + 1 if timeout else 0
+        if not timeout or self._timeouts >= TIMEOUT_LOG_AFTER:
+            suffix = f" [{self._timeouts} timeouts in a row]" if timeout else ""
+            log.warning("gameserve.rs request failed: %s%s", self.last_error, suffix)
+            self._failure_logged = True
         return APIError(reason)
 
     def _ok(self) -> None:
+        if self._failure_logged:
+            log.info("gameserve.rs requests are succeeding again.")
+        self._failure_logged = False
+        self._timeouts = 0
         self._backoff = 0.0
         self._backoff_until = 0.0
         self.last_success = time.time()
@@ -161,7 +176,10 @@ class GameServeClient:
                     self._ok()
                     return resp.status, body, ttl
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                raise self._fail(str(exc) or type(exc).__name__) from exc
+                raise self._fail(
+                    str(exc) or type(exc).__name__,
+                    timeout=isinstance(exc, asyncio.TimeoutError),
+                ) from exc
 
     # ----------------------------------------------------------------- cache
 

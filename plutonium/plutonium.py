@@ -1,5 +1,5 @@
 """
-Plutonium - live Components V2 status boards for Plutonium (T4/T5/T6) gameservers,
+Plutonium - live Components V2 status boards for Plutonium (T4/T5/T6/IW5) gameservers,
 powered by the public gameserve.rs API.
 """
 
@@ -51,7 +51,7 @@ class GameConverter(commands.Converter):
     async def convert(self, ctx: commands.Context, argument: str) -> str:
         game = game_from_api(argument)
         if game is None:
-            raise commands.BadArgument("Game must be one of `T4`, `T5` or `T6`.")
+            raise commands.BadArgument("Game must be one of `T4`, `T5`, `T6` or `IW5`.")
         return game
 
 
@@ -64,9 +64,9 @@ class AddressConverter(commands.Converter):
 
 
 class Plutonium(commands.Cog):
-    """Live status boards for Plutonium T4/T5/T6 gameservers (via gameserve.rs)."""
+    """Live status boards for Plutonium T4/T5/T6/IW5 gameservers (via gameserve.rs)."""
 
-    __version__ = "1.0.0"
+    __version__ = "1.1.0"
 
     def __init__(self, bot: Red) -> None:
         super().__init__()
@@ -245,10 +245,10 @@ class Plutonium(commands.Cog):
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def pluto(self, ctx: commands.Context) -> None:
-        """Live status embeds for Plutonium T4/T5/T6 gameservers.
+        """Live status embeds for Plutonium T4/T5/T6/IW5 gameservers.
 
         Each status embed has a short name (e.g. `main`) used by every other command.
-        Servers are listed alphabetically inside a T4, T5 or T6 section, and a
+        Servers are listed alphabetically inside a T4, T5, T6 or IW5 section, and a
         section only appears when that embed has a server for it.
         """
 
@@ -283,7 +283,7 @@ class Plutonium(commands.Cog):
             )
         await ctx.send(
             f"Created status embed `{name}` in {channel.mention}. "
-            f"Add servers with `{ctx.clean_prefix}pluto add {name} <ip:port> [T4|T5|T6]`."
+            f"Add servers with `{ctx.clean_prefix}pluto add {name} <ip:port> [T4|T5|T6|IW5]`."
         )
 
     @pluto.command(name="delete", aliases=["del"])
@@ -448,7 +448,7 @@ class Plutonium(commands.Cog):
     ) -> None:
         """Add a gameserver (`ip:port`) to a status embed.
 
-        The section (T4/T5/T6) is detected from gameserve.rs automatically; pass it
+        The section (T4/T5/T6/IW5) is detected from gameserve.rs automatically; pass it
         explicitly if the server is offline or to override the detection.
         """
         name = name.lower()
@@ -473,7 +473,7 @@ class Plutonium(commands.Cog):
                 )
                 return await ctx.send(
                     f"Couldn't detect the game for `{address}` because {why}.\n"
-                    f"Specify it: `{ctx.clean_prefix}pluto add {name} {address} T4|T5|T6`."
+                    f"Specify it: `{ctx.clean_prefix}pluto add {name} {address} T4|T5|T6|IW5`."
                 )
             game = detected
         elif detected and detected != game:
@@ -634,7 +634,7 @@ class Plutonium(commands.Cog):
         """Set an emoji used by the embed. Leave emoji empty to reset to default.
 
         Kinds:
-        `t4`, `t5`, `t6` - shown next to each section title
+        `t4`, `t5`, `t6`, `iw5` - shown next to each section title
         `online` - server is up
         `full` - server is up and full (falls back to `online` if unset)
         `offline` - server is down / not listed

@@ -12,7 +12,7 @@ Mostly cogs that give admins more control over disabling/enabling features that 
 | IdentifyActivity | Mod or Admins can search (with paging support) users currently on certain activities in the server. |
 | Maven | Privileged Access Management (PAM) for your server. Allow role checkouts instead of keeping dangerous permissions 24/7. |
 | LineLimit | Restrict the amount of newlines that can be in a message per category or channel. |
-| Plutonium | Live Components V2 status embeds for Plutonium T4/T5/T6 gameservers (map, mode, players, zombies round) via the free gameserve.rs API. |
+| Plutonium | Live Components V2 status embeds for Plutonium T4/T5/T6/IW5 gameservers (map, mode, players, zombies round) via the free gameserve.rs API. |
 | ServerTag | View a user's server tag name, server ID, and image. Mods/Admins can view list of users with a certain tag name. |
 | StickerControl | Control where users can post Discord stickers using blacklist/whitelist systems. |
 

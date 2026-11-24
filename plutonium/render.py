@@ -9,17 +9,19 @@ import discord
 
 from .api import SITE_BASE, GameServeClient, server_url
 
-GAMES = ("T4", "T5", "T6")
+GAMES = ("T4", "T5", "T6", "IW5")
 GAME_DEFAULTS = {
     "T4": ("Plutonium T4", "Gameservers for Call of Duty: World at War on Plutonium"),
     "T5": ("Plutonium T5", "Gameservers for Call of Duty: Black Ops on Plutonium"),
     "T6": ("Plutonium T6", "Gameservers for Call of Duty: Black Ops II on Plutonium"),
+    "IW5": ("Plutonium IW5", "Gameservers for Call of Duty: Modern Warfare 3 on Plutonium"),
 }
-EMOJI_KEYS = ("t4", "t5", "t6", "online", "full", "offline", "maintenance")
+EMOJI_KEYS = ("t4", "t5", "t6", "iw5", "online", "full", "offline", "maintenance")
 DEFAULT_EMOJIS = {
     "t4": "",
     "t5": "",
     "t6": "",
+    "iw5": "",
     "online": "\N{LARGE GREEN CIRCLE}",
     "full": "",  # empty -> falls back to the online emoji
     "offline": "\N{LARGE RED CIRCLE}",
@@ -48,7 +50,7 @@ def map_name(data: Optional[dict]) -> Optional[str]:
 
 
 def game_from_api(game_id: Optional[str]) -> Optional[str]:
-    """Map an API game tag (T4ZM, T6, ...) to a section key (T4/T5/T6)."""
+    """Map an API game tag (T4ZM, T6, IW5, ...) to a section key (T4/T5/T6/IW5)."""
     game_id = (game_id or "").upper()
     for game in GAMES:
         if game_id.startswith(game):
